@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "default_locale": "en",
+  "name": "NoScript Commons Library",
+  "applications": {
+    "gecko": {
+      "id":  "{73a6fe31-595d-460b-a920-fcc0f8843232}",
+      "strict_min_version": "59.0"
+    }
+  },
+  "version": "0.0.1",
+
+  "permissions": [
+      "contextMenus",
+      "storage",
+      "tabs",
+      "unlimitedStorage",
+      "webNavigation",
+      "webRequest",
+      "scripting",
+      "declarativeNetRequest",
+      "declarativeNetRequestFeedback"
+  ],
+  "host_permissions": [
+      "<all_urls>"
+  ],
+
+  "background": {
+    "service_worker": "main.js"
+  },
+
+  "content_scripts": [
+    {
+      "run_at": "document_start",
+      "matches": ["<all_urls>"],
+      "match_about_blank": true,
+      "all_frames": true,
+      "js": [
+	 "content/main.js"
+      ]
+    }
+  ]
+}

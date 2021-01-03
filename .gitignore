@@ -1,0 +1,13 @@
+# build artifacts
+build
+chromium
+xpi
+*.xpi
+*.zip
+*.crx
+*.bak
+# dev env options
+.eslintrc.json
+# auto-generated files
+*/TLD/tld.js
+*/TLD/tld_template.js

@@ -15,7 +15,7 @@ try {
     "UA", "uuid", "log", "locale",
     "tld", "Messages",
     "CSP", "CapsCSP", "NetCSP",
-    "RequestKey", "Policy",
+    "RequestKey", "Sites", "Permissions", "Policy",
     "Storage",
   ]);
 

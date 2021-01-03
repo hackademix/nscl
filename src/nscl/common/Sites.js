@@ -10,7 +10,8 @@ var Sites = (() => {
   let rxQuote = s => s.replace(/[.?*+^$[\]\\(){}|-]/g, "\\$&");
 
   /**
-   * A Map of sites with a bunch of utility functions for URL/origin manipulation and mapping
+   * a Map whose keys are (partial) URLs, used by Policy to store per-site Permissions 
+   * and providing several utility functions for URL/origin manipulation and mapping.
    */
   class Sites extends Map {
     static secureDomainKey(domain) {

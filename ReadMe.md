@@ -5,4 +5,4 @@ By abstracting the common functionality shared among security and privacy extens
 
 Cross-browser issues will have a chance to be fixed or worked around in one single place, ideally with the help of multiple developers sharing the same requirements. The solutions will be subject to automated tests to timely catch regressions, especially those caused by further changes in the APIs provided by the different browsers. The residual browser-specific differences, compromises and corner cases which couldn't be addressed at all, or without significant performance penalties, will be clearly benchmarked and documented, to make both developers and users well aware of the limitations imposed by each browser and capable of educated decisions, tailored to their security and privacy needs. This transparency will also pressure browser vendors into increasing their support level, when they're are publicly shown to be measurably lacking in comparison with their competitors.
 
-![NoScript Commons Library](https://hackademix.net/wp-content/uploads/2020/03/nslibrary.jpg)
+![NoScript Commons Library](https://noscript.net/common-library/nscl-logo.png)

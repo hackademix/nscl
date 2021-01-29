@@ -20,6 +20,7 @@ class PolicyEnforcer {
    * - https://bugs.chromium.org/p/chromium/issues/detail?id=1054624
    */
   costructor() {
+    this._enforceActually = "declarativeNetRequest" in browser ? this._dntEnforce : this._bwrEnforce;
   }
   
   /**
@@ -28,6 +29,17 @@ class PolicyEnforcer {
    * @param {object} policy the nscl/common/Policy instance to be enforced (or JSON serialization, or null)
    */
   async enforce(policy) {
+    return await this._enforceActually(policy);
+  }
+
+  async _dntEnforce(policy) {
+    if ("dry" in policy) policy = policy.dry();
+    // TODO: iterate over each preset and custom rules, creating RE2 regexFilters and CSP to enforce the policy
+  }
+
+  async _bwrEnforce(policy) {
 
   }
+
+  
 } 

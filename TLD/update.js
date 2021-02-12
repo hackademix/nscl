@@ -39,7 +39,7 @@ function parse() {
 
     if(!section || comment.test(line) || !splitter.test(line))
       continue;
-  
+
     let parts = splitter.exec(line);
     let tld  = punycode.toASCII(parts[2]),
       level = tld.split(".").length,
@@ -54,11 +54,13 @@ function parse() {
   if(!(tlds.icann && tlds.private))
     throw `Error in TLD parser`;
 
+  fs.unlinkSync(TLD_CACHE);
+
   let tldOut = fs.readFileSync(TLD_OUT, 'utf8');
   let json = JSON.stringify(tlds);
   let exitCode = 1;
   if (!tldOut.includes(json)) {
-    tldOut = /^s*\{/.test(tldOut) ? json 
+    tldOut = /^s*\{/.test(tldOut) ? json
         : tldOut.replace(/(\btlds = )\{[^]*?\};/, `$1${json};`);
     fs.writeFileSync(TLD_OUT, tldOut);
     console.log(`${TLD_OUT} updated!`)

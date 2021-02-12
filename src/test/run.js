@@ -3,5 +3,6 @@
   Test.include([
     "Policy",
     "Storage",
+    "TLD",
   ]);
 })();

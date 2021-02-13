@@ -7,7 +7,7 @@ var punycode = require('punycode');
 const args = process.argv.slice(2);
 const TLD_CACHE = "public_suffix_list.dat";
 const TLD_URL = `https://publicsuffix.org/list/${TLD_CACHE}`;
-const TLD_OUT = args[0] || "../nscl/common/tld.js";
+const TLD_OUT = args[0] || "../common/tld.js";
 
 let ts = Date.now();
 

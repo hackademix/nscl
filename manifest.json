@@ -37,7 +37,7 @@
       "match_about_blank": true,
       "all_frames": true,
       "js": [
-	      "content/main.js"
+	      "content.js"
       ]
     }
   ]

@@ -1,16 +1,15 @@
 
 "use strict";
 try {
-  let BASE = "/nscl/";
+  let BASE = "";
   self.include = src => Array.isArray(src) ? importScripts(...src) : importScripts(src);
-  
+
   let includeFrom = (dir, srcs) =>  include(srcs.map(name => `${BASE}/${dir}/${name}.js`));
-  
+
   includeFrom("lib", [
     "browser-polyfill", "punycode", "sha256"
   ]);
-  
- 
+
   includeFrom("common", [
     "UA", "uuid", "log", "locale",
     "tld", "Messages",

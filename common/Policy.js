@@ -1,6 +1,6 @@
 var Policy = (() => {
   'use strict';
-  
+
   function defaultOptions() {
     return {
       sites:{
@@ -8,7 +8,7 @@ var Policy = (() => {
         untrusted: [],
         custom: {},
       },
-      DEFAULT: new Permissions(["frame", "fetch", "other"]),
+      DEFAULT: new Permissions(["frame", "fetch", "noscript", "other"]),
       TRUSTED: new Permissions(Permissions.ALL),
       UNTRUSTED: new Permissions(),
       enforced: true,

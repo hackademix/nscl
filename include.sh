@@ -4,9 +4,8 @@
 # any nscl JS file referenced by $TARGET/manifest.json
 # or any *.js file found under $TARGET, plus those
 # referenced by the nscl files included in the first pass
-
 export TARGET="$1"
-export SRC="$(dirname $0)/../"
+export SRC="$(pwd)/$(dirname $0)/.."
 if ! [[ "$TARGET" && -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"
   exit 1
@@ -37,3 +36,4 @@ filter_inclusions() {
 filter_inclusions "$TARGET" manifest.json
 # include also references from nscl scripts already included
 [[ -d "$TARGET/nscl" ]] && filter_inclusions "$TARGET/nscl/"
+exit 0

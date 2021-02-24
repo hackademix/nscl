@@ -5,13 +5,24 @@ function patchWindow(patchingCallback, env = {}) {
   if (!nativeExport) {
     // Chromium
     let exportFunction = (func, targetObject, {defineAs}) => {
-      let original = targetObject[defineAs];
-      console.log(`Setting ${targetObject}.${defineAs}`, func);
-      targetObject[defineAs] = new Proxy(original, {
-        apply(target, thisArg, args) { 
-          return func.apply(thisArg, args); 
+      try {
+        let propDef = /^([gs]et) (\w+)/.exec(defineAs);
+        let original = propDef ? // getter or setter
+          Object.getOwnPropertyDescriptor(targetObject, propDef[2])[propDef[1]]
+          : targetObject[defineAs];
+        let proxy = new Proxy(original, {
+          apply(target, thisArg, args) {
+            return func.apply(thisArg, args);
+          }
+        });
+        if (!propDef) {
+          targetObject[defineAs] = proxy;
         }
-      });
+        return proxy;
+      } catch (e) {
+        console.error(e, `setting ${targetObject}.${defineAs}`, func);
+      }
+      return null;
     };
     let cloneInto = (obj, targetObject) => {
       return obj; // dummy for assignment
@@ -19,7 +30,6 @@ function patchWindow(patchingCallback, env = {}) {
     let script = document.createElement("script");
     script.text = `
     (() => {
-      console.log("Chromium patchWindow");
       let patchWindow = ${patchWindow};
       let cloneInto = ${cloneInto};
       let exportFunction = ${exportFunction};
@@ -85,7 +95,7 @@ function patchWindow(patchingCallback, env = {}) {
       return document;
     }}
 
-    descriptor.get = exportFunction(replacementFn, proto, {defineAs: `get $property`});
+    descriptor.get = exportFunction(replacementFn, proto, {defineAs: `get ${property}`});
     let wrappedProto = proto.wrappedJSObject || proto;
     Object.defineProperty(wrappedProto, property, descriptor);
   }

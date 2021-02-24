@@ -5,7 +5,10 @@
 # or any *.js file found under $TARGET, plus those
 # referenced by the nscl files included in the first pass
 export TARGET="$1"
-export SRC="$(pwd)/$(dirname $0)/.."
+export SRC="$(dirname $0)/.."
+if ! [[ "$SRC" == /* ]]; then
+  SRC="$(pwd)/$SRC"
+fi
 if ! [[ "$TARGET" && -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"
   exit 1

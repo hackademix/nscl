@@ -19,7 +19,7 @@ filter_inclusions() {
   shift
   shopt -s globstar
   for f in $(egrep 'nscl/[a-zA-Z_/-]+\.js' **/*.js $@ | \
-            sed -re "s/^nscl.*//" | tr "'\"" "\n" | \
+            tr "'\"" "\n" | \
             sed -re 's/.*(nscl\/[a-zA-Z_\/-]+\.js).*/\1/' | \
             egrep '^nscl/[a-zA-Z_/-]+\.js' | sort | uniq); do
     if ! [[ -f "$TARGET/$f" ]]; then

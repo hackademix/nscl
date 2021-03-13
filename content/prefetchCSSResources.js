@@ -1,5 +1,5 @@
 "use strict";
-function prefetchCSSResources(only3rdParty = fals, ruleCallback = null) {
+function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   if (typeof ruleCallback !== "function") {
     ruleCallback = null;
   }

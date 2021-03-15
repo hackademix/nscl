@@ -36,9 +36,7 @@
           let tmpResult = result;
           result = new Promise(resolve => setTimeout(() => resolve(tmpResult), 500));
           */
-          return (result instanceof Promise ? result
-            : new Promise(resolve => resolve(result))
-          ).then(result => unsuspend(result));
+          return Promise.resolve(result).then(result => unsuspend(result));
         });
       }
 

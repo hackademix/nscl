@@ -7,7 +7,7 @@
     if (!__meta) {
       // legacy message from embedder or library? ignore it
       if (!_messageName) {
-        debug(`Message not in NoScript-specific format: %s`, JSON.stringify(msg));
+        debug(`Message not in NSCL-specific format: %s`, JSON.stringify(msg));
         return undefined;
       }
       __meta = {name: _messageName};
@@ -33,8 +33,7 @@
           responderFound = true;
           continue;
         }
-        return (result instanceof Promise) ? result
-          : new Promise(r => r(result));
+        return Promise.resolve(result);
       }
     }
     if (exception) throw exception;

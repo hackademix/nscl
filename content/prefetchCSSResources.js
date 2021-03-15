@@ -34,9 +34,9 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         continue;
       }
 
-      let {href} = url;
-      if (resources.has(href)) continue;
-      resources.add(href);
+      let { href, origin } = url;
+      if (resources.has(origin)) continue;
+      resources.add(origin);
       if (ruleCallback && ruleCallback(rule, url)) {
         // if ruleCallback returns true we assume it handled or suppressed prefetching by itself
         continue;

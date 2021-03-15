@@ -1,12 +1,22 @@
 "use strict";
 function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
+  async function sendMessage(type, args) {
+    return await browser.runtime.sendMessage({
+      __prefetchCSSResources__: {
+        type, args
+      }
+    });
+  }
+  let corsEnabled = sendMessage("enableCORS");
+  let ghostDoc;
+
   if (typeof ruleCallback !== "function") {
     ruleCallback = null;
   }
 
   let processed = new WeakSet();
-  let {hostname} = location;
-  let {baseURI} = document;
+  let { hostname } = location;
+  let { baseURI } = document;
   let resources = new Set();
   let disabled = new WeakSet();
   // we can afford strict parsing because cssText gets normalized
@@ -14,12 +24,18 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
 
   let checkRule = rule => {
     if (!(rule instanceof CSSStyleRule)) {
-      if (rule.styleSheet) {
-        process(rule.styleSheet);
+      if (rule instanceof CSSImportRule) {
+        if (rule.styleSheet) {
+          process(rule.styleSheet);
+        } else {
+          let loader = new Image();
+          loader.onerror = () => process(rule.styleSheet);
+          loader.src = rule.href;
+        }
       }
       return;
     }
-    let {cssText, parentStyleSheet} = rule;
+    let { cssText, parentStyleSheet } = rule;
     let base = parentStyleSheet.href || baseURI;
     let matches = cssText.match(resourceFinderRx);
     for (let m; (m = resourceFinderRx.exec(cssText));) {
@@ -42,24 +58,60 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         continue;
       }
       // Unfortunately it seems we need to actually prefetch the resource due to dns-prefetch unreliablity.
-      // As a side effect we might be confusing some extra CSS+HTTP scriptless fingerprinting.
       new Image().src = href;
     }
   };
 
   let process = sheet => {
     if (processed.has(sheet)) return;
+    processed.add(sheet);
+    let { ownerNode } = sheet;
+    let rules;
+    try {
+      rules = sheet.cssRules;
+    } catch (e) {
+      if (ownerNode && ownerNode._prefetching) {
+        console.error("Error processing sheet", sheet, e);
+        return;
+      }
+      sheet.disabled = true;
+
+      // hack needed because disabled doesn't work on CSSImportRule.styleSheet
+      let originalMedia = sheet.media.mediaText;
+      if (sheet.ownerRule) sheet.media.mediaText = "speech and (width > 0)";
+
+      let parent = ownerNode && ownerNode.parentElement || document.documentElement;
+      let link = document.createElementNS("http://www.w3.org/1999/xhtml", "link");
+      link.href = sheet.href;
+      link.rel = "stylesheet";
+      link.type = "text/css";
+      link.crossOrigin = "anonymous";
+      link._prefetching = true;
+      link.onload = () => {
+        link.sheet.disabled = true;
+        process(link.sheet);
+        link.remove();
+        sheet.media.mediaText = originalMedia;
+        sheet.disabled = false;
+      }
+      link.onerror = () => {
+        console.error("Error fetching", link);
+      }
+      (async () => {
+        await corsEnabled;
+        parent.insertBefore(link, ownerNode || null);
+      })();
+      return;
+    }
     for (let rule of sheet.cssRules) {
       checkRule(rule);
     }
-    processed.add(sheet);
-    let {ownerNode} = sheet;
     if (ownerNode instanceof HTMLStyleElement) {
       if (ownerNode.disabled && disabled.has(ownerNode)) {
         ownerNode.disabled = false;
         disabled.delete(ownerNode);
       }
-      observer.observe(ownerNode, {characterData: true});
+      observer.observe(ownerNode, { characterData: true });
     }
   };
 
@@ -71,10 +123,10 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
 
   let checkInlineImport = styleNode => {
     if (styleNode instanceof HTMLStyleElement && !styleNode.disabled) {
-      let {textContent} = styleNode;
+      let { textContent } = styleNode;
       if (/(?:^|[\s;}])@import\b/i.test(textContent)) {
-        let {sheet} = styleNode;
-        if (sheet && sheet.rules[0]) {
+        let { sheet } = styleNode;
+        if (sheet) {
           process(sheet);
         } else {
           styleNode.disabled = true;
@@ -84,9 +136,11 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
             try {
               let url = new URL(m[1], baseURI);
               let loader = new Image();
-              loader.onload = processAll;
+              loader.onerror = e => {
+                process(styleNode.sheet)
+              };
               loader.src = url;
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -106,7 +160,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     processAll();
   });
 
-  observer.observe(document.documentElement, {subtree: true, childList: true});
+  observer.observe(document.documentElement, { subtree: true, childList: true });
 
   document.documentElement.addEventListener("load", ev => {
     if (ev.target instanceof HTMLLinkElement) {
@@ -114,7 +168,12 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     }
   }, true);
 
-  document.addEventListener("readystatechange", processAll, true);
+  document.addEventListener("readystatechange", () => {
+    processAll();
+    if (document.readyState === "complete") {
+      sendMessage("disableCORS");
+    }
+  }, true);
 
   for (let styleNode of document.querySelectorAll("style")) {
     checkInlineImport(styleNode);

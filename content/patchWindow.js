@@ -53,6 +53,8 @@ function patchWindow(patchingCallback, env = {}) {
       modifyTarget(win.wrappedJSObject || win, env);
       modifyWindowOpenMethod(win, modifyTarget);
       modifyFramingElements(win, modifyTarget);
+      // we don't need to modify win.opener, read skriptimaahinen notes
+      // at https://forums.informaction.com/viewtopic.php?p=103754#p103754
     } catch (e) {
       if (e instanceof DOMException && e.name === "SecurityError") {
         // In case someone tries to access SOP restricted window.

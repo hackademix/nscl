@@ -19,8 +19,8 @@ filter_inclusions() {
   echo "Processing inclusions referenced by $@..."
   pushd >/dev/null 2>&1 "$1"
   shift
-  shopt -s globstar
-  for f in $(egrep 'nscl/[0-9a-zA-Z_/-]+\.js' **/*.js $@ | \
+  shopt -s globstar nullglob
+  for f in $(egrep 'nscl/[0-9a-zA-Z_/-]+\.js' **/*.{js,html} $@ | \
             tr "'\"" "\n" | \
             sed -re 's/.*(nscl\/[0-9a-zA-Z_\/-]+\.js).*/\1/' | \
             egrep '^nscl/[0-9a-zA-Z_/-]+\.js' | sort | uniq); do

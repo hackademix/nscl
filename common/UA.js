@@ -1,8 +1,9 @@
 {
   let mozWebExtUrl = typeof document === "object" && document.URL.startsWith("moz-");
-  let isMozilla = mozWebExtUrl || 
-    (typeof window === "object") ? typeof window.wrappedJSObject === "object"
-             : "contentScripts" in browser;
+  let isMozilla = mozWebExtUrl ||
+    (typeof window === "object"
+        ? typeof window.wrappedJSObject === "object"
+        : "contentScripts" in browser);
   let mobile = false;
   if (isMozilla) {
     if (mozWebExtUrl) {

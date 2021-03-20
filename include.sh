@@ -20,10 +20,10 @@ filter_inclusions() {
   pushd >/dev/null 2>&1 "$1"
   shift
   shopt -s globstar
-  for f in $(egrep 'nscl/[a-zA-Z_/-]+\.js' **/*.js $@ | \
+  for f in $(egrep 'nscl/[0-9a-zA-Z_/-]+\.js' **/*.js $@ | \
             tr "'\"" "\n" | \
-            sed -re 's/.*(nscl\/[a-zA-Z_\/-]+\.js).*/\1/' | \
-            egrep '^nscl/[a-zA-Z_/-]+\.js' | sort | uniq); do
+            sed -re 's/.*(nscl\/[0-9a-zA-Z_\/-]+\.js).*/\1/' | \
+            egrep '^nscl/[0-9a-zA-Z_/-]+\.js' | sort | uniq); do
     if ! [[ -f "$TARGET/$f" ]]; then
       nscl_curdir="$TARGET/$(dirname $f)"
       mkdir -p "$nscl_curdir"

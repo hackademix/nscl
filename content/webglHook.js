@@ -27,16 +27,16 @@ ns.on("capabilities", event => {
   }, true);
 
   function modifyGetContext(win, env) {
-      let proto = win.HTMLCanvasElement.prototype;
-      let getContext = proto.getContext;
-      exportFunction(function(type, ...rest) {
-        if (type && type.toLowerCase().includes("webgl")) {
-          let target = document.contains(this) ? this : window;
-          target.dispatchEvent(new Event(env.eventName, {composed: true}));
-          return null;
-        }
-        return getContext.call(this, type, ...rest);
-      }, proto, {defineAs: "getContext"});
+    let proto = win.HTMLCanvasElement.prototype;
+    let getContext = proto.getContext;
+    exportFunction(function(type, ...rest) {
+      if (type && type.toLowerCase().includes("webgl")) {
+        let target = document.contains(this) ? this : window;
+        target.dispatchEvent(new Event(env.eventName, {composed: true}));
+        return null;
+      }
+      return getContext.call(this, type, ...rest);
+    }, proto, {defineAs: "getContext"});
   }
 
   patchWindow(modifyGetContext, env);

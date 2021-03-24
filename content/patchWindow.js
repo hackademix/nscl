@@ -6,17 +6,28 @@ function patchWindow(patchingCallback, env = {}) {
     // Chromium
     let exportFunction = (func, targetObject, {defineAs}) => {
       try {
-        let propDef = /^([gs]et) (\w+)/.exec(defineAs);
-        let original = propDef ? // getter or setter
-          Object.getOwnPropertyDescriptor(targetObject, propDef[2])[propDef[1]]
-          : targetObject[defineAs];
+        let  [propDef, getOrSet, propName] = /^([gs]et)(?:\s+(\w+))$/.exec(defineAs) || [null, null, defineAs];
+        let propDes = Object.getOwnPropertyDescriptor(targetObject, propName);
+        let original = propDef && propDef ? propDes[getOrSet] : targetObject[defineAs];
+
         let proxy = new Proxy(original, {
           apply(target, thisArg, args) {
             return func.apply(thisArg, args);
           }
         });
-        if (!propDef) {
-          targetObject[defineAs] = proxy;
+        if (!propDes) {
+          targetObject[propName] = proxy;
+        } else {
+          if (getOrSet) {
+            propDes[getOrSet] = proxy;
+          } else {
+            if ("value" in propDes) {
+              propDes.value = proxy;
+            } else {
+              return exportFunction(() => proxy, targetObject, `get ${propName}`);
+            }
+          }
+          Object.defineProperty(targetObject, propName, propDes);
         }
         return proxy;
       } catch (e) {

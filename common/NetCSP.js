@@ -14,8 +14,9 @@ class NetCSP extends CSP {
 
   unmergeExtras(header) {
     let {name, value} = header;
-    return value.split(/,\s*/).filter(v => !v.startsWith(this.start))
-      .map(value => {name, value});
+    let {start} = this;
+    return value.split(/,\s*/).filter(v => !v.startsWith(start))
+      .map(value => ({name, value}));
   }
 
   build(...directives) {

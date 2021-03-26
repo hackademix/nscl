@@ -32,9 +32,10 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     let cssProto = win.CSSStyleSheet.prototype;
     // prevent getting fooled by redefined getters
     let getOwnerNode = Object.getOwnPropertyDescriptor(ssProto, "ownerNode").get;
+    let dispatchEvent = EventTarget.prototype.dispatchEvent;
     let fire = (target, event) => {
       if (target instanceof StyleSheet) target = getOwnerNode.apply(rarget);
-      return target && target.dispatchEvent(new Event(event, {composed: true}));
+      return target && dispatchEvent.call(target, new Event(event, {composed: true}));
     };
     if (!window.wrappedJSObject) {
       // Only for Chromium, requiring relaxed CORS and therefore

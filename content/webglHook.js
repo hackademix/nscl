@@ -26,17 +26,21 @@ ns.on("capabilities", event => {
     notifyPage();
   }, true);
 
-  function modifyGetContext(win, env) {
-    let proto = win.HTMLCanvasElement.prototype;
-    let getContext = proto.getContext;
-    exportFunction(function(type, ...rest) {
-      if (type && type.toLowerCase().includes("webgl")) {
-        let target = document.contains(this) ? this : window;
-        target.dispatchEvent(new Event(env.eventName, {composed: true}));
-        return null;
-      }
-      return getContext.call(this, type, ...rest);
-    }, proto, {defineAs: "getContext"});
+  function modifyGetContext(scope, env) {
+    let dispatchEvent = EventTarget.prototype.dispatchEvent;
+    for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
+      if (!(canvas in scope)) continue;
+      let proto = scope[canvas].prototype;
+      let getContext = proto.getContext;
+      exportFunction(function(type, ...rest) {
+        if (/^webgl2?$/.test(type)) {
+          let target = canvas === "HTMLCanvasElement" && document.contains(this) ? this : scope;
+          dispatchEvent.call(target, new Event(env.eventName, {composed: true}));
+          return null;
+        }
+        return getContext.call(this, type, ...rest);
+      }, proto, {defineAs: "getContext"});
+    }
   }
 
   patchWindow(modifyGetContext, env);

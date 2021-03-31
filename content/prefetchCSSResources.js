@@ -34,7 +34,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     let getOwnerNode = Object.getOwnPropertyDescriptor(ssProto, "ownerNode").get;
     let dispatchEvent = EventTarget.prototype.dispatchEvent;
     let fire = (target, event) => {
-      if (target instanceof StyleSheet) target = getOwnerNode.apply(rarget);
+      if (target instanceof StyleSheet) target = getOwnerNode.apply(target);
       return target && dispatchEvent.call(target, new Event(event, {composed: true}));
     };
     if (!window.wrappedJSObject) {

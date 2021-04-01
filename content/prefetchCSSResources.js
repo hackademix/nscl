@@ -139,7 +139,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         delete o._originalMedia;
       }
     }
-    toggleMedia(...(o instanceof StyleSheet ?
+    toggleMedia(...(isSheet ?
       [o.media, "mediaText"]
       : [o, "media"]));
     return true;
@@ -212,9 +212,12 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     } catch (e) {
       let {href} = sheet;
 
-      if (!/^(https?):/.test(href) || ownerNode && ownerNode._prefetching === href) {
+      if (!/^(?:(?:ht|f)tps?):/.test(href) || ownerNode && ownerNode._prefetching === href) {
         // just give up: either it's another extension (e.g. Stylus), or we've already tried, failing
         console.error("Error processing sheet", sheet, e);
+        if (ownerNode) {
+          keepDisabled(ownerNode, false);
+        }
         return;
       }
       keepDisabled(sheet);
@@ -233,7 +236,9 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
           resolve(process(link.sheet));
           link.remove();
           keepDisabled(sheet, false);
-          if (ownerNode) keepDisabled(ownerNode, false);
+          if (ownerNode) {
+            keepDisabled(ownerNode, false);
+          }
         }
         (async () => {
           await sendMessage("enableCORS", {url});

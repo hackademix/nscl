@@ -9,8 +9,8 @@ var Permissions = (() => {
     /**
      * Creates a Permissions object
      * @param {Set/array} capabilities the capability enabled by this Permissions
-     * @param {boolean} temp are these permissions marked as temporary (volatile?) 
-     * @param {Sites/array} contextual (optional) the parent sites which these permissions are tied to  
+     * @param {boolean} temp are these permissions marked as temporary (volatile?)
+     * @param {Sites/array} contextual (optional) the parent sites which these permissions are tied to
      */
     constructor(capabilities, temp = false, contextual = null) {
       this.capabilities = new Set(capabilities);
@@ -67,7 +67,7 @@ var Permissions = (() => {
 
   }
 
-  Permissions.ALL = ["script", "object", "media", "frame", "font", "webgl", "fetch", "ping", "noscript", "other"];
+  Permissions.ALL = ["script", "object", "media", "frame", "font", "webgl", "fetch", "ping", "noscript", "csspp0", "other"];
   Permissions.IMMUTABLE = {
     UNTRUSTED: {
       "script": false,

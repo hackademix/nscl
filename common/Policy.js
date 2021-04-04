@@ -192,6 +192,21 @@ var Policy = (() => {
     equals(other) {
       this.snapshot === other.snapshot;
     }
+
+    getPresets(presetNames = "*") {
+      if (!Array.isArray(presetNames)) {
+        presetNames = presetNames === "*" ? ["TRUSTED", "UNTRUSTED", "DEFAULT", "CUSTOM"] : [presetNames];
+      }
+      let policy = this;
+      let customIdx = presetNames.indexOf("CUSTOM");
+      let presets = presetNames.map(p => policy[p])
+      if (customIdx !== -1) {
+        let { TRUSTED, UNTRUSTED } = policy;
+        // insert custom presets, if any
+        presets.splice(customIdx, 1, ...[...policy.sites.values()].filter(p => p !== TRUSTED && p !== UNTRUSTED));
+      }
+      return presets;
+    }
   }
 
   return Policy;

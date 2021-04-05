@@ -33,6 +33,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     // prevent getting fooled by redefined getters
     let getOwnerNode = Object.getOwnPropertyDescriptor(ssProto, "ownerNode").get;
     let dispatchEvent = EventTarget.prototype.dispatchEvent;
+    let { Event } = window;
     let fire = (target, event) => {
       if (target instanceof StyleSheet) target = getOwnerNode.apply(target);
       return target && dispatchEvent.call(target, new Event(event, {composed: true}));

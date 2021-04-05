@@ -28,6 +28,7 @@ ns.on("capabilities", event => {
 
   function modifyGetContext(scope, env) {
     let dispatchEvent = EventTarget.prototype.dispatchEvent;
+    let { Event } = scope;
     for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
       if (!(canvas in scope)) continue;
       let proto = scope[canvas].prototype;

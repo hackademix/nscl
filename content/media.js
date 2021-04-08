@@ -58,49 +58,50 @@ if ("MediaSource" in window) {
       mediaBlocker = !ns.allows("media");
       if (mediaBlocker) debug("mediaBlocker set via fetched policy.")
     });
-
-    let unpatched = new Map();
-    function patch(obj, methodName, replacement) {
-       let methods = unpatched.get(obj) || {};
-       methods[methodName] = obj[methodName];
-       exportFunction(replacement, obj, {defineAs: methodName});
-       unpatched.set(obj, methods);
-    }
-    let urlMap = new WeakMap();
-    patch(window.URL, "createObjectURL",  function(o, ...args) {
-      let url = unpatched.get(window.URL).createObjectURL.call(this, o, ...args);
-      if (o instanceof MediaSource) {
-        let urls = urlMap.get(o);
-        if (!urls) urlMap.set(o, urls = new Set());
-        urls.add(url);
+    patchWindow(() => {
+      let unpatched = new Map();
+      function patch(obj, methodName, replacement) {
+        let methods = unpatched.get(obj) || {};
+        methods[methodName] = obj[methodName];
+        exportFunction(replacement, obj, {defineAs: methodName});
+        unpatched.set(obj, methods);
       }
-      return url;
-    });
+      let urlMap = new WeakMap();
+      patch(window.URL, "createObjectURL",  function(o, ...args) {
+        let url = unpatched.get(window.URL).createObjectURL.call(this, o, ...args);
+        if (o instanceof MediaSource) {
+          let urls = urlMap.get(o);
+          if (!urls) urlMap.set(o, urls = new Set());
+          urls.add(url);
+        }
+        return url;
+      });
 
-    patch(window.MediaSource.prototype, "addSourceBuffer", function(mime, ...args) {
-      let ms = this;
-      let urls = urlMap.get(ms);
-      let request = notify(!mediaBlocker);
-      if (mediaBlocker) {
-        let exposedMime = `${mime} (MSE)`;
-        setTimeout(() => {
-          try {
-            let allMedia = [...document.querySelectorAll("video,audio")];
-            let me = allMedia.find(e => e.srcObject === ms ||
-              urls && (urls.has(e.currentSrc) || urls.has(e.src))) ||
-              // throwing may cause src not to be assigned at all:
-              allMedia.find(e => !(e.src || e.currentSrc || e.srcObject));
-            if (me) createPlaceholder(me, request);
-          } catch (e) {
-            error(e);
-          }
-        }, 0);
-        let msg = `${exposedMime} blocked by NoScript`;
-        log(msg);
-        throw new Error(msg);
-      }
+      patch(window.MediaSource.prototype, "addSourceBuffer", function(mime, ...args) {
+        let ms = this;
+        let urls = urlMap.get(ms);
+        let request = notify(!mediaBlocker);
+        if (mediaBlocker) {
+          let exposedMime = `${mime} (MSE)`;
+          setTimeout(() => {
+            try {
+              let allMedia = [...document.querySelectorAll("video,audio")];
+              let me = allMedia.find(e => e.srcObject === ms ||
+                urls && (urls.has(e.currentSrc) || urls.has(e.src))) ||
+                // throwing may cause src not to be assigned at all:
+                allMedia.find(e => !(e.src || e.currentSrc || e.srcObject));
+              if (me) createPlaceholder(me, request);
+            } catch (e) {
+              error(e);
+            }
+          }, 0);
+          let msg = `${exposedMime} blocked by NoScript`;
+          log(msg);
+          throw new Error(msg);
+        }
 
-      return unpatched.get(window.MediaSource.prototype).addSourceBuffer.call(ms, mime, ...args);
+        return unpatched.get(window.MediaSource.prototype).addSourceBuffer.call(ms, mime, ...args);
+      });
     });
   }
 }

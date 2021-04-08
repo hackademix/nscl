@@ -72,7 +72,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
               },
               set(target, prop, newVal) {
                 switch(prop) {
-                  case "mediaText": return "";
+                  case "mediaText": return true;
                 }
                 return Reflect.set(...arguments);
              }

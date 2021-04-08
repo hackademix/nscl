@@ -14,29 +14,15 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
 
   let corsSheetURLs = new Set();
 
-  let eventId = uuid();
-  let env = {rulesEvent: `rules:${eventId}`, disabledEvent: `disabled:${eventId}`};
-  window.addEventListener(env.rulesEvent, e => {
-    if (corsSheetURLs.has(e.target.sheet.href)) e.preventDefault();
-  }, true);
-  window.addEventListener(env.disabledEvent, e => {
-    let node = e.target;
-    if (node._keepDisabled || (node.sheet && node.sheet._keepDisabled)) {
-      e.preventDefault();
-    }
-  });
-
-  let wrapCssAccess = (win, env) => {
+  (patchWindow((win, env) => {
     let { StyleSheet } = win;
     let ssProto = StyleSheet.prototype;
     let cssProto = win.CSSStyleSheet.prototype;
     // prevent getting fooled by redefined getters
     let getOwnerNode = Object.getOwnPropertyDescriptor(ssProto, "ownerNode").get;
-    let dispatchEvent = EventTarget.prototype.dispatchEvent;
-    let { Event } = window;
-    let fire = (target, event) => {
+    let postMessage = (msg, target) => {
       if (target instanceof StyleSheet) target = getOwnerNode.apply(target);
-      return target && dispatchEvent.call(target, new Event(event, {composed: true}));
+      return target && env.port.postMessage(msg, target);
     };
     if (!window.wrappedJSObject) {
       // Only for Chromium, requiring relaxed CORS and therefore
@@ -44,7 +30,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       for (let prop of ["rules", "cssRules"]) {
         let originalGetter = Object.getOwnPropertyDescriptor(cssProto, prop).get;
         exportFunction(function() {
-          if (fire(this, env.rulesEvent)) {
+          if (!postMessage("accessRules", this)) {
             throw new DOMException("Security Error",
               `Failed to read the '${prop}' property from 'CSSStyleSheet': Cannot access rules`);
           }
@@ -59,7 +45,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       let prop = "media";
       let des = Object.getOwnPropertyDescriptor(p, prop);
       exportFunction(function(value) {
-        if (!fire(this, env.disabledEvent)) {
+        if (postMessage("isDisabled", this)) {
           if (this instanceof StyleSheet) {
             return new Proxy(this.media, {
               get(target, prop, receiver) {
@@ -97,14 +83,20 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         return des.get.call(this, value);
       }, p, {defineAs: `get ${prop}`});
       exportFunction(function(value) {
-        if (!fire(this, env.disabledEvent)) {
+        if (postMessage("isDisabled", this)) {
           return value;
         }
         return des.set.call(this, value);
       }, p, {defineAs: `set ${prop}`});
     }
-  }
-  patchWindow(wrapCssAccess, env);
+  }).onMessage = (msg, {target: node}) => {
+    switch(msg) {
+      case "isDisabled":
+        return node._keepDisabled || (node.sheet && node.sheet._keepDisabled);
+      case "accessRules":
+        return corsSheetURLs.has(node.sheet.href);
+    }
+  });
 
   if (typeof ruleCallback !== "function") {
     ruleCallback = null;

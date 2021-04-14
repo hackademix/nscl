@@ -25,14 +25,41 @@ function patchWindow(patchingCallback, env = {}) {
   let { dispatchEvent, addEventListener } = window;
 
   function Port(from, to) {
+    // we need a double dispatching dance and maintaining a stack of
+    // return values / thrown errors because Chromium seals the detail object
+    // (on Firefox we could just append further properties to it...)
+    let retStack = [];
+
+    function fire(e, detail, target = window) {
+      dispatchEvent.call(target, new CustomEvent(`${eventId}:${e}`, {detail, composed: true}));
+    }
     this.postMessage = function(msg, target = window) {
+      retStack.push({});
       let detail = {msg};
-      dispatchEvent.call(target, new CustomEvent(`${eventId}:${to}`, {detail, composed: true}));
-      return detail.ret;
+      fire(to, detail);
+      let ret = retStack.pop();
+      if (ret.error) throw ret.error;
+      return ret.value;
     };
-    addEventListener.call(window, `${eventId}:${from}`, e => {
-      if (typeof this.onMessage === "function" && e.detail) {
-        e.detail.ret = this.onMessage(e.detail.msg, e);
+    addEventListener.call(window, `${eventId}:${from}`, event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (typeof this.onMessage === "function" && event.detail) {
+        let ret = {};
+        try {
+          ret.value = this.onMessage(event.detail.msg, event);
+        } catch (error) {
+          ret.error = error;
+        }
+        fire(`return:${to}`, ret);
+      }
+    }, true);
+    addEventListener.call(window, `${eventId}:return:${from}`, event => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      let {detail} = event;
+      if (detail && retStack.length) {
+       retStack[retStack.length -1] = detail;
       }
     }, true);
     this.onMessage = null;

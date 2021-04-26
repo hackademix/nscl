@@ -20,7 +20,8 @@
       "scripting",
       "declarativeNetRequest",
       "declarativeNetRequestFeedback",
-      "declarativeContent"
+      "declarativeContent",
+      "debugger"
   ],
   "host_permissions": [
       "<all_urls>"

@@ -53,7 +53,6 @@ var DocStartInjection = (() => {
       let injectionId = `injection:${uuid()}:${sha256(scriptsBlock)}`;
       let args = {
         code: `(() => {
-          console.debug("DocStartInjection", document.readyState, document.URL, ${JSON.stringify(url)});
           let injectionId = ${JSON.stringify(injectionId)};
           if (document.readyState === "complete" ||
               window[injectionId] ||

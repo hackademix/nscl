@@ -10,7 +10,7 @@ var Sites = (() => {
   let rxQuote = s => s.replace(/[.?*+^$[\]\\(){}|-]/g, "\\$&");
 
   /**
-   * a Map whose keys are (partial) URLs, used by Policy to store per-site Permissions 
+   * a Map whose keys are (partial) URLs, used by Policy to store per-site Permissions
    * and providing several utility functions for URL/origin manipulation and mapping.
    */
   class Sites extends Map {
@@ -90,13 +90,13 @@ var Sites = (() => {
     }
 
     static origin(site) {
-      if (!site) return "";
+      if (!site || site === "null") return site || "";
       try {
         let objUrl = (typeof site === "object" && "origin" in site) ? site : site.startsWith("chrome:") ? {origin: "chrome:" } : new URL(site);
         let {origin} = objUrl;
         return origin === "null" ? Sites.cleanUrl(objUrl) || site : origin;
       } catch (e) {
-        error(e);
+        error(e, JSON.stringify(site));
       };
       return site.origin || site;
     }

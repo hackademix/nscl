@@ -206,6 +206,11 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       let {href} = sheet;
 
       if (!/^(?:(?:ht|f)tps?):/.test(href) || ownerNode && ownerNode._prefetching === href) {
+        if (/\bstill-loading\b/.test(e.message)) {
+          // too early, let's retry on load
+          processed.remove(sheet);
+          return;
+        }
         // just give up: either it's another extension (e.g. Stylus), or we've already tried, failing
         console.error("Error processing sheet", sheet, e);
         if (ownerNode) {

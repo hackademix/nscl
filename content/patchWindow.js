@@ -42,8 +42,6 @@ function patchWindow(patchingCallback, env = {}) {
       return ret.value;
     };
     addEventListener.call(window, `${eventId}:${from}`, event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
       if (typeof this.onMessage === "function" && event.detail) {
         let ret = {};
         try {
@@ -55,8 +53,6 @@ function patchWindow(patchingCallback, env = {}) {
       }
     }, true);
     addEventListener.call(window, `${eventId}:return:${from}`, event => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
       let {detail} = event;
       if (detail && retStack.length) {
        retStack[retStack.length -1] = detail;

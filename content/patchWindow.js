@@ -126,7 +126,8 @@ function patchWindow(patchingCallback, env = {}) {
   //                or methods. Callback must take target window as argument.
   function modifyWindow(win, modifyTarget) {
     try {
-      modifyTarget(win.wrappedJSObject || win, env);
+      win = win.wrappedJSObject || win;
+      modifyTarget(win, env);
       modifyWindowOpenMethod(win, modifyTarget);
       modifyFramingElements(win, modifyTarget);
       // we don't need to modify win.opener, read skriptimaahinen notes
@@ -140,7 +141,7 @@ function patchWindow(patchingCallback, env = {}) {
   }
 
   function modifyWindowOpenMethod(win, modifyTarget) {
-    let windowOpen = win.wrappedJSObject ? win.wrappedJSObject.open : win.open;
+    let windowOpen = win.open;
     exportFunction(function(...args) {
       let newWin = windowOpen.call(this, ...args);
       if (newWin) modifyWindow(newWin, modifyTarget);
@@ -174,8 +175,7 @@ function patchWindow(patchingCallback, env = {}) {
     }}
 
     descriptor.get = exportFunction(replacementFn, proto, {defineAs: `get ${property}`});
-    let wrappedProto = proto.wrappedJSObject || proto;
-    Object.defineProperty(wrappedProto, property, descriptor);
+    Object.defineProperty(proto, property, descriptor);
   }
 
   modifyWindow(window, patchingCallback);

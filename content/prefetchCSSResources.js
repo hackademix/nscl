@@ -107,10 +107,12 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   let { baseURI } = document;
   let resources = new Set();
 
+  let seen = new WeakSet();
+
   const MEDIA_DISABLER = "speech and (width > 0px)"
 
   let keepDisabled = (o, v = true) => {
-    if (v && o._keepDisabled) return false;
+    if (!v === !o._keepDisabled) return false;
     let isSheet = o instanceof StyleSheet;
     if (!("_keepDisabled" in o || isSheet)) {
       if (o instanceof HTMLStyleElement) {
@@ -119,9 +121,9 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         observer.observe(o, {attributeFilter: ["href", "media", "rel"]});
       }
     }
-
     o._keepDisabled = v;
     let toggleMedia = (o, prop, disabler = MEDIA_DISABLER) => {
+      if (v === (o[prop] === disabler)) return;
       if (v) {
         if (!("_originalMedia" in o)) {
           o._originalMedia = o[prop];
@@ -129,11 +131,10 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         }
       } else if ("_originalMedia" in o) {
         o[prop] = o._originalMedia;
-        delete o._originalMedia;
       }
     }
     toggleMedia(...(isSheet ?
-      [o.media, "mediaText"]
+        [o.media, "mediaText"]
       : [o, "media"]));
     return true;
   };
@@ -204,7 +205,6 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       rules = sheet.cssRules;
     } catch (e) {
       let {href} = sheet;
-
       if (!/^(?:(?:ht|f)tps?):/.test(href) || ownerNode && ownerNode._prefetching === href) {
         if (/\bstill-loading\b/.test(e.message)) {
           // too early, let's retry on load
@@ -250,10 +250,10 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     for (let rule of sheet.cssRules) {
       pending.push(checkRule(rule));
     }
-    Promise.all(pending).then(() => keepDisabled(sheet, false));
-    if (ownerNode) {
-      keepDisabled(ownerNode, false);
-    }
+    Promise.all(pending).then(() => {
+      keepDisabled(sheet, false);
+      if (ownerNode) keepDisabled(ownerNode, false)
+    });
   };
 
   let processAll = () => {
@@ -304,10 +304,11 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
           checkNode(r.target.parentElement);
         break;
         case "attributes":
-          if (r.target._keepDisabled) {
-            if (r.attributeName === "media" && r.media !== MEDIA_DISABLER) {
-              r._originalMedia = r.media;
-              r.media = MEDIA_DISABLER;
+          if (r.attributeName === "media") {
+            let {target} = r;
+            if (target._keepDisabled && target.media !== MEDIA_DISABLER) {
+              target._originalMedia = target.media;
+              target.media = MEDIA_DISABLER;
             }
           } else {
             checkNode(r.target);

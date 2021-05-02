@@ -123,7 +123,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     }
     o._keepDisabled = v;
     let toggleMedia = (o, prop, disabler = MEDIA_DISABLER) => {
-      if (v === (o[prop] === disabler)) return;
+      if (v === (o[prop] === disabler || prop === "mediaText" && o[prop] === "not all")) return;
       if (v) {
         if (!("_originalMedia" in o)) {
           o._originalMedia = o[prop];

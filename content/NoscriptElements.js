@@ -34,10 +34,13 @@ var NoscriptElements = {
 
     if (document.readyState !== "complete") {
       // catch the other elements as they're added
-      let observer = new MutationObserver(records => {
-        replaceAll()
+      let observer = new MutationObserver(replaceAll);
+      observer.observe(document.documentElement, {childList: true, subtree: true});
+      addEventListener("DOMContentLoaded", function completed(e) {
+        removeEventListener(e.type, completed);
+        observer.disconnect();
+        replaceAll();
       });
-      observer.observe(document.documentElement, {childList: true});
       return;
     }
 

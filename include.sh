@@ -4,11 +4,13 @@
 # any nscl JS file referenced by $TARGET/manifest.json
 # or any *.js file found under $TARGET, plus those
 # referenced by the nscl files included in the first pass
-export TARGET="$1"
-export SRC="$(dirname $0)/.."
-if ! [[ "$SRC" == /* ]]; then
-  SRC="$(pwd)/$SRC"
-fi
+abs() {
+  [[ "$1" == /* ]] && echo "$1" || echo "$(pwd)/$1" 
+}
+
+TARGET=$(abs "$1")
+SRC=$(abs "$(dirname $0)/..")
+
 if ! [[ "$TARGET" && -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"
   exit 1
@@ -28,7 +30,7 @@ filter_inclusions() {
       nscl_curdir="$TARGET/$(dirname $f)"
       mkdir -p "$nscl_curdir"
       cp -p "$SRC/$f" "$nscl_curdir"
-      echo "Including $f."
+      echo "Including $f. in $nscl_curdir"
     else
       echo >&2 "$TARGET/$f exists!"
     fi

@@ -12,12 +12,13 @@ ns.on("capabilities", event => {
       let proto = scope[canvas].prototype;
       let getContext = proto.getContext;
       exportFunction(function(type, ...rest) {
-        if (/^webgl2?$/.test(type)) {
+        let ctx = getContext.call(this, type, ...rest); // let the browser handle exceptions, if any
+        if (ctx && /webgl/i.test(type)) {
           let target = canvas === "HTMLCanvasElement" && document.contains(this) ? this : scope;
           env.port.postMessage("webgl", target);
           return null;
         }
-        return getContext.call(this, type, ...rest);
+        return ctx;
       }, proto, {defineAs: "getContext"});
     }
   }

@@ -9,17 +9,22 @@ ns.on("capabilities", event => {
     let { Event } = scope;
     for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
       if (!(canvas in scope)) continue;
-      let proto = scope[canvas].prototype;
-      let getContext = proto.getContext;
-      exportFunction(function(type, ...rest) {
-        let ctx = getContext.call(this, type, ...rest); // let the browser handle exceptions, if any
-        if (ctx && /webgl/i.test(type)) {
-          let target = canvas === "HTMLCanvasElement" && document.contains(this) ? this : scope;
-          env.port.postMessage("webgl", target);
-          return null;
+
+      const getContext = scope[canvas].prototype.getContext;
+
+      const handler = cloneInto({
+        apply: function(targetObj, thisArg, argumentsList) {
+          if (thisArg instanceof HTMLCanvasElement && /webgl/i.test(argumentsList[0])) {
+            let target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
+            env.port.postMessage("webgl", target);
+            return null;
+          }
+          return getContext.call(thisArg, ...argumentsList);
         }
-        return ctx;
-      }, proto, {defineAs: "getContext"});
+      }, scope, {cloneFunctions: true});
+
+      const proxy = new scope.Proxy(getContext, handler);
+      scope[canvas].prototype.getContext = proxy;
     }
   }
 

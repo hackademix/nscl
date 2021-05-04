@@ -36,7 +36,7 @@ function patchWindow(patchingCallback, env = {}) {
     this.postMessage = function(msg, target = window) {
       retStack.push({});
       let detail = {msg};
-      fire(to, detail);
+      fire(to, detail, target);
       let ret = retStack.pop();
       if (ret.error) throw ret.error;
       return ret.value;

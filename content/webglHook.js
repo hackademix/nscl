@@ -10,11 +10,12 @@ ns.on("capabilities", event => {
     for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
       if (!(canvas in scope)) continue;
 
-      const getContext = scope[canvas].prototype.getContext;
+      const CanvasClass = window[canvas];
+      const getContext = CanvasClass.prototype.getContext;
 
       const handler = cloneInto({
         apply: function(targetObj, thisArg, argumentsList) {
-          if (thisArg instanceof HTMLCanvasElement && /webgl/i.test(argumentsList[0])) {
+          if (thisArg instanceof CanvasClass && /webgl/i.test(argumentsList[0])) {
             let target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
             env.port.postMessage("webgl", target);
             return null;

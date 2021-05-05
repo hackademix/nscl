@@ -58,17 +58,18 @@ if ("MediaSource" in window) {
       mediaBlocker = !ns.allows("media");
       if (mediaBlocker) debug("mediaBlocker set via fetched policy.")
     });
-    patchWindow(() => {
+    patchWindow(win => {
       let unpatched = new Map();
       function patch(obj, methodName, replacement) {
         let methods = unpatched.get(obj) || {};
         methods[methodName] = obj[methodName];
-        exportFunction(replacement, obj, {defineAs: methodName});
+        obj[methodName] = exportFunction(replacement, obj, {original: obj[methodName]});
         unpatched.set(obj, methods);
       }
       let urlMap = new WeakMap();
-      patch(window.URL, "createObjectURL",  function(o, ...args) {
-        let url = unpatched.get(window.URL).createObjectURL.call(this, o, ...args);
+      let URL = win.URL;
+      patch(URL, "createObjectURL",  function(o, ...args) {
+        let url = unpatched.get(URL).createObjectURL.call(this, o, ...args);
         if (o instanceof MediaSource) {
           let urls = urlMap.get(o);
           if (!urls) urlMap.set(o, urls = new Set());
@@ -76,8 +77,8 @@ if ("MediaSource" in window) {
         }
         return url;
       });
-
-      patch(window.MediaSource.prototype, "addSourceBuffer", function(mime, ...args) {
+      let MediaSourceProto = win.MediaSource.prototype;
+      patch(MediaSourceProto, "addSourceBuffer", function(mime, ...args) {
         let ms = this;
         let urls = urlMap.get(ms);
         let request = notify(!mediaBlocker);
@@ -100,7 +101,7 @@ if ("MediaSource" in window) {
           throw new Error(msg);
         }
 
-        return unpatched.get(window.MediaSource.prototype).addSourceBuffer.call(ms, mime, ...args);
+        return unpatched.get(MediaSourceProto).addSourceBuffer.call(ms, mime, ...args);
       });
     });
   }

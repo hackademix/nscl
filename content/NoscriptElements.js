@@ -12,7 +12,7 @@ var NoscriptElements = {
       // emulate meta-refresh
       if (emulateMetaRefresh) {
         for (let meta of replacement.querySelectorAll('meta[http-equiv="refresh"]')) {
-          this.refresh = true;
+          this.refresh = document.readyState;
           document.head.appendChild(meta);
           debug(`State %s, emulating`, document.readyState, meta);
         }
@@ -32,20 +32,34 @@ var NoscriptElements = {
     // replace any element already there
     replaceAll();
 
-    if (document.readyState !== "complete") {
+    if (document.readyState === "loading") {
       // catch the other elements as they're added
       let observer = new MutationObserver(replaceAll);
       observer.observe(document.documentElement, {childList: true, subtree: true});
-      addEventListener("DOMContentLoaded", function completed(e) {
+      let completed = e => {
         removeEventListener(e.type, completed);
         observer.disconnect();
         replaceAll();
-      });
+        switch(this.refresh) {
+          case "interactive":
+            let v = navigator.userAgent.match(/Firefox\/(\d+)/);
+            let noInteractiveRewrite = v && parseInt(v[1]) >= 88;
+            if (noInteractiveRewrite) break;
+          case "complete":
+            rewrite();
+        }
+      };
+      addEventListener("pageshow", completed);
       return;
     }
 
+
     // document already loaded, we need to rewrite for refresh emulation
     if (this.refresh) {
+      rewrite();
+    }
+
+    function rewrite() {
       let html = document.documentElement.outerHTML;
       debug("Rewriting page to emulate meta-refresh", html);
       let doc = window.wrappedJSObject ? window.wrappedJSObject.document : window.document;

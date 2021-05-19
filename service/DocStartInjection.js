@@ -80,9 +80,7 @@ var DocStartInjection = (() => {
       let ackMsg = JSON.stringify({
         [MSG_ID]: {id, tabId, frameId, url}
       });
-      scripts.add(`console.debug("DocStartInjection", document.readyState, ${ackMsg});
-      if (document.readyState !== "complete") browser.runtime.sendMessage(${ackMsg});
-      `);
+      scripts.add(`if (document.readyState !== "complete") browser.runtime.sendMessage(${ackMsg});`);
 
       let options = {
         js: [...scripts].map(code => ({code})),
@@ -112,12 +110,19 @@ var DocStartInjection = (() => {
         if (success = ret[0]) {
           break;
         }
+        if (attempts % 1000 === 0) {
+          console.error(`DocStartInjection at ${url} ${attempts} failed attempts so far...`);
+        }
       } catch (e) {
         if (!repeat || /No tab\b/.test(e.message)) {
           break;
         }
         if (!/\baccess\b/.test(e.message)) {
           console.error(e.message);
+          continue;
+        }
+        if (attempts % 1000 === 0) {
+          console.error(`DocStartInjection at ${url} ${attempts} failed attempts`, e);
         }
       }
     }

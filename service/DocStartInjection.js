@@ -6,7 +6,7 @@
 var DocStartInjection = (() => {
   const MSG_ID = "__DocStartInjection__";
   let repeating = !("contentScripts" in browser);
-  let handlers = new Set();
+  let scriptBuilders = new Set();
   let getId = ({requestId, tabId, frameId, url}) => requestId || `${tabId}:${frameId}:${url}`;
   let pending = new Map();
 
@@ -27,20 +27,19 @@ var DocStartInjection = (() => {
     let {tabId, frameId, url} = request;
     if (tabId < 0 || !/^(?:(?:https?|ftp|data|blob|file):|about:blank$)/.test(url)) return;
 
-    for (let h of handlers) {
+    await Promise.all([...scriptBuilders].map(async buildScript => {
       try {
-        let script = h({tabId, frameId, url});
+        let script = await buildScript({tabId, frameId, url});
         if (script) scripts.add(`try {
           ${typeof script === "function" ? `(${script})();` : script}
           } catch (e) {
             console.error("Error in DocStartInjection script", e);
           }`);
       } catch (e) {
-        error("Error calling DocStartInjection handler", handler, e);
-        continue;
-      }
-    }
-
+        error("Error calling DocStartInjection scriptBuilder", buildScript, e);
+      }     
+    }));
+    
     if (scripts.size === 0) {
       debug(`DocStartInjection: no script to inject in ${url}`);
       return;
@@ -179,13 +178,13 @@ var DocStartInjection = (() => {
   }
 
   return {
-    register(handler) {
-      if (handlers.size === 0) listen(true);
-      handlers.add(handler);
+    register(scriptBuilder) {
+      if (scriptBuilders.size === 0) listen(true);
+      scriptBuilders.add(scriptBuilder);
     },
-    unregister(handler) {
-      handlers.delete(handlers);
-      if (handlers.size() === 0) listen(false);
+    unregister(scriptBuilder) {
+      scriptBuilders.delete(scriptBuilder);
+      if (scriptBuilders.size() === 0) listen(false);
     }
   };
 })();

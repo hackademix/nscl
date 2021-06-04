@@ -1,5 +1,5 @@
 NoScript Commons Library
-Helping security/privacy WebExtensions surviving the Manifest V3
+Reusable building blocks for cross-browser security/privacy WebExtensions.
 Copyright (C) 2020-2021 Giorgio Maone - https://maone.net
 
 This program is free software; you can redistribute it and/or modify

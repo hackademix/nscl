@@ -4,17 +4,14 @@
 # any nscl JS file referenced by $TARGET/manifest.json
 # or any *.js file found under $TARGET, plus those
 # referenced by the nscl files included in the first pass
-abs() {
-  [[ "$1" == /* ]] && echo "$1" || echo "$(pwd)/$1" 
-}
 
 TARGET="$1"
 if [[ -z "$TARGET" ]];then
   echo 1>&2 "Target directory not specified!"
   exit 1
 fi
-TARGET="$(abs "$TARGET")"
-SRC="$(abs "$(dirname "$0")/..")"
+TARGET="$(realpath "$TARGET")"
+SRC="$(realpath "$(dirname "$0")/..")"
 
 if ! [[ -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"

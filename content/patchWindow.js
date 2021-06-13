@@ -123,15 +123,18 @@ function patchWindow(patchingCallback, env = {}) {
     return port;
   }
   env.port = new Port("page", "extension");
+
+  const patchedWindows = new WeakSet(); // track them to avoid indirect recursion
+
   // win: window object to modify.
-  // modifyTarget: callback to function that modifies the desired properties
-  //                or methods. Callback must take target window as argument.
-  function modifyWindow(win, modifyTarget) {
+  function modifyWindow(win) {
     try {
       win = win.wrappedJSObject || win;
-      modifyTarget(win, env);
-      modifyWindowOpenMethod(win, modifyTarget);
-      modifyFramingElements(win, modifyTarget);
+      if (patchedWindows.has(win)) return;
+      patchedWindows.add(win);
+      patchingCallback(win, env);
+      modifyWindowOpenMethod(win);
+      modifyFramingElements(win);
       // we don't need to modify win.opener, read skriptimaahinen notes
       // at https://forums.informaction.com/viewtopic.php?p=103754#p103754
     } catch (e) {
@@ -142,44 +145,44 @@ function patchWindow(patchingCallback, env = {}) {
     }
   }
 
-  function modifyWindowOpenMethod(win, modifyTarget) {
+  function modifyWindowOpenMethod(win) {
     let windowOpen = win.open;
     exportFunction(function(...args) {
       let newWin = windowOpen.call(this, ...args);
-      if (newWin) modifyWindow(newWin, modifyTarget);
+      if (newWin) modifyWindow(newWin);
       return newWin;
     }, win, {defineAs: "open"});
   }
 
-  function modifyFramingElements(win, modifyTarget) {
+  function modifyFramingElements(win) {
     for (let property of ["contentWindow", "contentDocument"]) {
       for (let iface of ["Frame", "IFrame", "Object"]) {
         let proto = win[`HTML${iface}Element`].prototype;
-        modifyContentProperties(proto, property, modifyTarget)
+        modifyContentProperties(proto, property)
       }
     }
   }
 
-  function modifyContentProperties(proto, property, modifyTarget) {
+  function modifyContentProperties(proto, property) {
     let descriptor = Object.getOwnPropertyDescriptor(proto, property);
     let origGetter = descriptor.get;
-    let replacementFn;
+    let replacements = {
+      contentWindow() {
+        let win = origGetter.call(this);
+        if (win) modifyWindow(win);
+        return win;
+      },
+      contentDocument() {
+        let document = origGetter.call(this);
+        if (document && document.defaultView) modifyWindow(document.defaultView);
+        return document;
+      }
+    };
 
-    if (property === "contentWindow") { replacementFn = function() {
-      let win = origGetter.call(this);
-      if (win) modifyWindow(win, modifyTarget);
-      return win;
-    }}
-    if (property === "contentDocument") { replacementFn = function() {
-      let document = origGetter.call(this);
-      if (document && document.defaultView) modifyWindow(document.defaultView, modifyTarget);
-      return document;
-    }}
-
-    descriptor.get = exportFunction(replacementFn, proto, {defineAs: `get ${property}`});
+    descriptor.get = exportFunction(replacements[property], proto, {defineAs: `get ${property}`});
     Object.defineProperty(proto, property, descriptor);
   }
 
-  modifyWindow(window, patchingCallback);
+  modifyWindow(window);
   return port;
 }

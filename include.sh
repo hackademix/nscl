@@ -13,8 +13,8 @@ if [[ -z "$TARGET" ]];then
   echo 1>&2 "Target directory not specified!"
   exit 1
 fi
-TARGET=$(abs "$TARGET")
-SRC=$(abs "$(dirname $0)/..")
+TARGET="$(abs "$TARGET")"
+SRC="$(abs "$(dirname "$0")/..")"
 
 if ! [[ -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"
@@ -27,12 +27,12 @@ filter_inclusions() {
   pushd >/dev/null 2>&1 "$1"
   shift
   shopt -s globstar nullglob
-  for f in $(egrep 'nscl/[0-9a-zA-Z_/-]+\.js' **/*.{js,html} $@ | \
+  for f in $(egrep 'nscl/[0-9a-zA-Z_/-]+\.js' **/*.{js,html} "$@" | \
             tr "'\"" "\n" | \
             sed -re 's/.*(nscl\/[0-9a-zA-Z_\/-]+\.js).*/\1/' | \
             egrep '^nscl/[0-9a-zA-Z_/-]+\.js' | sort | uniq); do
     if ! [[ -f "$TARGET/$f" ]]; then
-      nscl_curdir="$TARGET/$(dirname $f)"
+      nscl_curdir="$TARGET/$(dirname "$f")"
       mkdir -p "$nscl_curdir"
       cp -p "$SRC/$f" "$nscl_curdir"
       echo "Including $f. in $nscl_curdir"

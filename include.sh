@@ -8,10 +8,15 @@ abs() {
   [[ "$1" == /* ]] && echo "$1" || echo "$(pwd)/$1" 
 }
 
-TARGET=$(abs "$1")
+TARGET="$1"
+if [[ -z "$TARGET" ]];then
+  echo 1>&2 "Target directory not specified!"
+  exit 1
+fi
+TARGET=$(abs "$TARGET")
 SRC=$(abs "$(dirname $0)/..")
 
-if ! [[ "$TARGET" && -d "$TARGET" ]]; then
+if ! [[ -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"
   exit 1
 fi

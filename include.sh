@@ -11,7 +11,7 @@ if [[ -z "$TARGET" ]];then
   exit 1
 fi
 TARGET="$(realpath "$TARGET")"
-SRC="$(realpath "$(dirname "$0")/..")"
+SRC="$(realpath "$(dirname "$(dirname "$0")")")"
 
 if ! [[ -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"

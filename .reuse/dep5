@@ -1,10 +1,19 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: NoScript Commons Library
-Upstream-Contact: Giorgio Maone <giorgio@maone.net>
+Upstream-Contact: Giorgio Maone <https://maone.net>
 Source: https://noscript.net/commons-library
 
-# Sample paragraph, commented out:
-#
-# Files: src/*
-# Copyright: $YEAR $NAME <$CONTACT>
-# License: ...
+# Files not worth to be copyrighted
+Files: .gitignore .gitmodules
+Copyright: No copyright
+License: CC0-1.0
+
+# JSON (uncommentable) files
+Files: *.json */*.json
+Copyright: 2020-2021 Giorgio Maone
+License: GPL-3.0-or-later
+
+# Localization files
+Files: _locales/*
+Copyright: 2020-2021 The NoScript translators community <info@noscript.net>
+License: GPL-3.0-or-later

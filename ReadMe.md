@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2021 Giorgio Maone <https://maone.net>
+
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
 # NoScript Commmons Library
 A collection of reusable modules, APIs and documentation designed to facilitate the cross-browser development and maintenance of privacy and security browser extensions, helping them survive the restrictions imposed by Google's [Manifest V3](https://developer.chrome.com/extensions/migrating_to_manifest_v3) on Chromium-based browser, but in perspective on Firefox-based ones too, should Mozilla be forced to compromise and downgrade their WebExtensions API to some extent for compatibility's sake. Furthermore, it will aid developers porting and/or maintaining extensions on mobile browsers, such as the new Firefox for Android (code-name "Fenix"), which support just a subset of the APIs available on the desktop.
 

@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Copyright (C) 2021 Giorgio Maone <https://maone.net>
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 # This script includes in the $TARGET/nscl directory
 # any nscl JS file referenced by $TARGET/manifest.json
 # or any *.js file found under $TARGET, plus those

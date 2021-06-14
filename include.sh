@@ -4,14 +4,16 @@
 # any nscl JS file referenced by $TARGET/manifest.json
 # or any *.js file found under $TARGET, plus those
 # referenced by the nscl files included in the first pass
-abs() {
-  [[ "$1" == /* ]] && echo "$1" || echo "$(pwd)/$1" 
-}
 
-TARGET=$(abs "$1")
-SRC=$(abs "$(dirname $0)/..")
+TARGET="$1"
+if [[ -z "$TARGET" ]];then
+  echo 1>&2 "Target directory not specified!"
+  exit 1
+fi
+TARGET="$(realpath "$TARGET")"
+SRC="$(realpath "$(dirname "$(dirname "$0")")")"
 
-if ! [[ "$TARGET" && -d "$TARGET" ]]; then
+if ! [[ -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"
   exit 1
 fi
@@ -22,12 +24,12 @@ filter_inclusions() {
   pushd >/dev/null 2>&1 "$1"
   shift
   shopt -s globstar nullglob
-  for f in $(egrep 'nscl/[0-9a-zA-Z_/-]+\.js' **/*.{js,html} $@ | \
+  for f in $(grep -E 'nscl/[0-9a-zA-Z_/-]+\.js' **/*.{js,html} "$@" | \
             tr "'\"" "\n" | \
             sed -re 's/.*(nscl\/[0-9a-zA-Z_\/-]+\.js).*/\1/' | \
-            egrep '^nscl/[0-9a-zA-Z_/-]+\.js' | sort | uniq); do
+            grep -E '^nscl/[0-9a-zA-Z_/-]+\.js' | sort | uniq); do
     if ! [[ -f "$TARGET/$f" ]]; then
-      nscl_curdir="$TARGET/$(dirname $f)"
+      nscl_curdir="$TARGET/$(dirname "$f")"
       mkdir -p "$nscl_curdir"
       cp -p "$SRC/$f" "$nscl_curdir"
       echo "Including $f. in $nscl_curdir"

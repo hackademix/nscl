@@ -3,8 +3,6 @@
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
  * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
  *
- * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
- *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify it under
@@ -59,9 +57,9 @@ var DocStartInjection = (() => {
           }`);
       } catch (e) {
         error("Error calling DocStartInjection scriptBuilder", buildScript, e);
-      }     
+      }
     }));
-    
+
     if (scripts.size === 0) {
       debug(`DocStartInjection: no script to inject in ${url}`);
       return;

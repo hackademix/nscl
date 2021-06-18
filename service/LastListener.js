@@ -3,8 +3,6 @@
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
  * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
  *
- * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
- *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify it under
@@ -22,9 +20,9 @@
 
 /**
 * Wrapper around listeners on various WebExtensions
-* APIs (e.g. webRequest.on*), as a best effort to 
-* let them run last by removing and re-adding them 
-* on each call (swapping 2 copies because 
+* APIs (e.g. webRequest.on*), as a best effort to
+* let them run last by removing and re-adding them
+* on each call (swapping 2 copies because
 * addListener() calls are asynchronous).
 * Note: we rely on implementation details Like
 * listeners being called in addition order; also,
@@ -42,7 +40,7 @@ class LastListener {
       let w = (...args) => {
         if (this.observed.hasListener(w._other)) {
           this.observed.removeListener(w);
-        } else if (this.installed) { 
+        } else if (this.installed) {
           this.observed.addListener(w._other, ...this.extras);
         }
         debug("Running listener", w === ww[0] ? 0 : 1, ...args);
@@ -51,7 +49,7 @@ class LastListener {
       }
       return w;
     });
-    
+
     ww[0]._other = ww[1];
     ww[1]._other = ww[0];
     this.installed = false;
@@ -63,7 +61,7 @@ class LastListener {
     this.observed.addListener(this._wrapped[0], ...this.extras);
     this.installed = true;
   }
-  
+
   uninstall() {
     this.installed = false;
     for (let l of this._wrapped) this.observed.removeListener(l);

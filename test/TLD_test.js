@@ -3,8 +3,6 @@
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
  * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
  *
- * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
- *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify it under
@@ -23,10 +21,10 @@
 // see https://publicsuffix.org/list/ TEST DATA
 function checkPublicSuffix(givenDomain, actualDomain) {
   let [given, actual] = [givenDomain, actualDomain].map(d => punycode.toASCII(d || ''));
-  Test.run(() => (given.startsWith(".") 
-    || tld.getPublicSuffix(given) === given 
+  Test.run(() => (given.startsWith(".")
+    || tld.getPublicSuffix(given) === given
       ? '' : tld.getDomain(given)
-    ).toLowerCase() == actual, 
+    ).toLowerCase() == actual,
   `${JSON.stringify(givenDomain)} => ${JSON.stringify(actualDomain)}`);
 }
 

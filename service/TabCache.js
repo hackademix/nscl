@@ -3,8 +3,6 @@
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
  * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
  *
- * Copyright (C) 2020-2021 Giorgio Maone <https://maone.net>
- *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
  * This program is free software: you can redistribute it and/or modify it under
@@ -31,7 +29,7 @@ var TabCache = (() => {
   browser.tabs.onRemoved.addListener(tab => {
     cache.delete(tab.id);
   });
-  
+
   (async () => {
     for (let tab of await browser.tabs.query({})) {
       cache.set(tab.id, tab);

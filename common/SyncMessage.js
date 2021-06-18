@@ -21,7 +21,7 @@
 "use strict";
 (() => {
   let ENDPOINT_ORIGIN = "https://255.255.255.255";
-  let ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/${browser.extension.getURL("")}?`;
+  let ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/${browser.runtime.getURL("")}?`;
   let MOZILLA = "mozSystem" in XMLHttpRequest.prototype;
 
   if (browser.webRequest) {

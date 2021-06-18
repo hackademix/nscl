@@ -29,7 +29,7 @@ var PlaceHolder = (() => {
     if (!replacement) return;
     if (window.getComputedStyle(replacement, null).opacity !== "0.8") {
       document.head.appendChild(createHTMLElement("style")).textContent = await
-        (await fetch(browser.extension.getURL("/content/content.css"))).text();
+        (await fetch(browser.runtime.getURL("/content/content.css"))).text();
     }
   }
 

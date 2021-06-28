@@ -18,6 +18,8 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// depends on /nscl/common/uuid.js
+
 "use strict";
 /**
  * Injects code into page context in a cross-browser way, providing it
@@ -41,6 +43,9 @@
  */
 
 function patchWindow(patchingCallback, env = {}) {
+  if (typeof patchingCallback !== "function") {
+    patchingCallback = new Function("unwrappedWindow", patchingCallback);
+  }
   let eventId = this && this.eventId || `windowPatchMessages:${uuid()}`;
   let { dispatchEvent, addEventListener } = window;
 

@@ -133,20 +133,21 @@ var DocStartInjection = (() => {
           console.error(`DocStartInjection at ${url} ${attempts} failed attempts so far...`);
         }
       } catch (e) {
-        if (!repeat || /No tab\b/.test(e.message)) {
+        if (/No tab\b/.test(e.message)) {
           break;
         }
         if (!/\baccess\b/.test(e.message)) {
           console.error(e.message);
-          continue;
         }
         if (attempts % 1000 === 0) {
           console.error(`DocStartInjection at ${url} ${attempts} failed attempts`, e);
         }
+      } finally {
+        if (!repeat) break;
       }
     }
-    if (!repeat) pending.delete(id);
-    debug(`DocStartInjection at ${url}, ${attempts} attempts, success = ${success}.`);
+    pending.delete(id);
+    debug(`DocStartInjection at ${url}, ${attempts} attempts, success = ${success}, repeat = ${repeat}.`);
   }
 
   function end(request) {

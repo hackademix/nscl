@@ -33,6 +33,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   let createElement = tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
 
   let corsSheetURLs = new Set();
+  let corsSheetBaseURLs = new Set();
 
   (patchWindow((win, env) => {
     let { StyleSheet } = win;
@@ -238,8 +239,12 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         }
         return;
       }
+      if (corsSheetBaseURLs.has(href)) {
+        console.debug("Already processing CORS request", href);
+        return;
+      }
       keepDisabled(sheet);
-
+      corsSheetBaseURLs.add(href);
       let link = createElement("link");
       let url = `${href}#${uuid()}`;
       corsSheetURLs.add(link._prefetching = link.href = url);
@@ -334,22 +339,22 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
             checkNode(r.target);
           }
       }
-      if (r.addedNodes) {
-        for (let n of r.addedNodes) {
-          checkNode(n);
-        }
-      } else if (r.type === "characterData") {
-        checkNode(r.target.parentElement);
-      }
     }
-    processAll();
   });
 
   observer.observe(document.documentElement, { subtree: true, childList: true });
 
+  let loadedLinks = new WeakMap();
   document.documentElement.addEventListener("load", ev => {
-    if (ev.target instanceof HTMLLinkElement) {
-      processAll();
+    let link = ev.target;
+    if (link instanceof HTMLLinkElement) {
+      if (loadedLinks.get(link) !== link.href) {
+        loadedLinks.set(link, link.href);
+        processAll();
+      } else {
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+      }
     }
   }, true);
 

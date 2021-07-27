@@ -33,7 +33,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   let createElement = tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
 
   let corsSheetURLs = new Set();
-  let corsSheetBaseURLs = new Set();
+  let corsSheetsByHref = new Map();
 
   (patchWindow((win, env) => {
     let { StyleSheet } = win;
@@ -239,12 +239,16 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         }
         return;
       }
-      if (corsSheetBaseURLs.has(href)) {
+      sheet.disabled = true;
+      keepDisabled(sheet);
+      let corsSheets = corsSheetsByHref.get(href);
+      if (corsSheets) {
+        corsSheets.add(sheet);
         console.debug("Already processing CORS request", href);
         return;
+      } else {
+        corsSheetsByHref.set(href, corsSheets = new Set([sheet]));
       }
-      keepDisabled(sheet);
-      corsSheetBaseURLs.add(href);
       let link = createElement("link");
       let url = `${href}#${uuid()}`;
       corsSheetURLs.add(link._prefetching = link.href = url);
@@ -256,9 +260,20 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       }
       return new Promise(resolve => {
         link.onload = () => {
+          link.onload = null;
           resolve(process(link.sheet));
           link.remove();
-          keepDisabled(sheet, false);
+          console.debug(`${href} has ${corsSheets.size} sheets`)
+          for (let sheet of [...corsSheets]) {
+            try {
+              console.debug("Enabling back", sheet);
+              keepDisabled(sheet, false);
+              sheet.disabled = false;
+            } catch (e) {
+              console.error(e);
+            }
+          }
+          corsSheetsByHref.delete(href);
           if (ownerNode) {
             keepDisabled(ownerNode, false);
           }

@@ -125,12 +125,17 @@ var DocStartInjection = (() => {
     for (; pending.has(id);) {
       attempts++;
       try {
+        if (attempts % 1000 === 0) {
+          let tab = await browser.tabs.get(request.tabId);
+          if (tab.url !== url) {
+            console.error(`Tab mismatch: ${tab.url} <> ${url} (download-triggered?)`);
+            break;
+          }
+          console.error(`DocStartInjection at ${url} ${attempts} failed attempts so far...`);
+        }
         let ret = await browser.tabs.executeScript(tabId, args);
         if (success = ret[0]) {
           break;
-        }
-        if (attempts % 1000 === 0) {
-          console.error(`DocStartInjection at ${url} ${attempts} failed attempts so far...`);
         }
       } catch (e) {
         if (/No tab\b/.test(e.message)) {

@@ -244,7 +244,6 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       let corsSheets = corsSheetsByHref.get(href);
       if (corsSheets) {
         corsSheets.add(sheet);
-        console.debug("Already processing CORS request", href);
         return;
       } else {
         corsSheetsByHref.set(href, corsSheets = new Set([sheet]));
@@ -263,10 +262,8 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
           link.onload = null;
           resolve(process(link.sheet));
           link.remove();
-          console.debug(`${href} has ${corsSheets.size} sheets`)
           for (let sheet of [...corsSheets]) {
             try {
-              console.debug("Enabling back", sheet);
               keepDisabled(sheet, false);
               sheet.disabled = false;
             } catch (e) {

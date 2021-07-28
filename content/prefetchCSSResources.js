@@ -115,7 +115,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       case "isDisabled":
         return node._keepDisabled || (node.sheet && node.sheet._keepDisabled);
       case "accessRules":
-        return corsSheetURLs.has(node.sheet.href);
+        return !(node.sheet && node.sheet.href && corsSheetURLs.has(node.sheet.href));
     }
   });
 

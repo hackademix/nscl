@@ -330,6 +330,16 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     } else if (styleNode instanceof HTMLLinkElement
       && styleNode.relList.contains("stylesheet")
       && styleNode.href) {
+      if (styleNode.media) {
+        let mql = window.matchMedia(styleNode.media);
+        if (!mql.matches) { // don't soft disable if current media query already does it
+          getShadow(styleNode).mql = mql; // keep a reference alive until the node is not GCed
+          mql.onchange = e => {
+            checkNode(styleNode);
+          }
+          return;
+        }
+      }
       keepDisabled(styleNode);
     }
   }

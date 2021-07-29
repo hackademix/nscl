@@ -61,7 +61,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     }
     let mmProto = win.MediaList.prototype;
     let { appendMedium, deleteMedium, item } = mmProto;
-    // make disable property temporarily readonly if tagged as _keepDisabled
+    // make disable property temporarily readonly if tagged as keepDisabled
     for (let p of [ssProto, win.HTMLStyleElement.prototype, win.HTMLLinkElement.prototype]) {
       let prop = "media";
       let des = Object.getOwnPropertyDescriptor(p, prop);
@@ -113,7 +113,8 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   }).onMessage = (msg, {target: node}) => {
     switch(msg) {
       case "isDisabled":
-        return node._keepDisabled || (node.sheet && node.sheet._keepDisabled);
+        let shadow = getShadow(node);
+        return shadow.keepDisabled || (node.sheet && getShadow(node.sheet).keepDisabled);
       case "accessRules":
         return !(node.sheet && node.sheet.href && corsSheetURLs.has(node.sheet.href));
     }
@@ -128,30 +129,36 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   let { baseURI } = document;
   let resources = new Set();
 
-  let seen = new WeakSet();
+  let shadows = new WeakMap();
+  let getShadow = o => {
+    let shadow = shadows.get(o);
+    if (!shadow) shadows.set(o, shadow = {});
+    return shadow;
+  };
 
   const MEDIA_DISABLER = "speech and (width > 0px)"
 
   let keepDisabled = (o, v = true) => {
-    if (!v === !o._keepDisabled) return false;
+    let shadow = getShadow(o);
+    if (!v === !shadow.keepDisabled) return false;
     let isSheet = o instanceof StyleSheet;
-    if (!("_keepDisabled" in o || isSheet)) {
+    if (!("keepDisabled" in shadow || isSheet)) {
       if (o instanceof HTMLStyleElement) {
         observer.observe(o, { characterData: true, attributeFilter: ["media"] });
       } else {
         observer.observe(o, {attributeFilter: ["href", "media", "rel"]});
       }
     }
-    o._keepDisabled = v;
+    shadow.keepDisabled = v;
     let toggleMedia = (o, prop, disabler = MEDIA_DISABLER) => {
       if (v === (o[prop] === disabler || prop === "mediaText" && o[prop] === "not all")) return;
       if (v) {
-        if (!("_originalMedia" in o)) {
-          o._originalMedia = o[prop];
+        if (!("originalMedia" in shadow)) {
+          shadow.originalMedia = o[prop];
           o[prop] = disabler;
         }
-      } else if ("_originalMedia" in o) {
-        o[prop] = o._originalMedia;
+      } else if ("originalMedia" in shadow) {
+        o[prop] = shadow.originalMedia;
       }
     }
     toggleMedia(...(isSheet ?
@@ -226,7 +233,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       rules = sheet.cssRules;
     } catch (e) {
       let {href} = sheet;
-      if (!/^(?:(?:ht|f)tps?):/.test(href) || ownerNode && ownerNode._prefetching === href) {
+      if (!/^(?:(?:ht|f)tps?):/.test(href) || ownerNode && getShadow(ownerNode).prefetching === href) {
         if (/\bstill-loading\b/.test(e.message)) {
           // too early, let's retry on load
           processed.remove(sheet);
@@ -250,7 +257,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       }
       let link = createElement("link");
       let url = `${href}#${uuid()}`;
-      corsSheetURLs.add(link._prefetching = link.href = url);
+      corsSheetURLs.add(getShadow(link).prefetching = link.href = url);
       link.rel = "stylesheet";
       link.type = "text/css";
       link.crossOrigin = "anonymous";
@@ -300,7 +307,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   }
 
   let checkNode = styleNode => {
-    if (styleNode._keepDisabled) return;
+    if (getShadow(styleNode).keepDisabled) return;
     let { sheet } = styleNode;
     if (sheet) {
       process(sheet);
@@ -343,8 +350,9 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         case "attributes":
           if (r.attributeName === "media") {
             let {target} = r;
-            if (target._keepDisabled && target.media !== MEDIA_DISABLER) {
-              target._originalMedia = target.media;
+            let shadow = getShadow(target);
+            if (shadow.keepDisabled && target.media !== MEDIA_DISABLER) {
+              shadow.originalMedia = target.media;
               target.media = MEDIA_DISABLER;
             }
           } else {

@@ -44,7 +44,7 @@
 
 function patchWindow(patchingCallback, env = {}) {
   if (typeof patchingCallback !== "function") {
-    patchingCallback = new Function("unwrappedWindow", patchingCallback);
+    patchingCallback = new Function("unwrappedWindow", "env", patchingCallback);
   }
   let eventId = this && this.eventId || `windowPatchMessages:${uuid()}`;
   let { dispatchEvent, addEventListener } = window;

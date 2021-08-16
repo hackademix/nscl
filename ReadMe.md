@@ -4,7 +4,7 @@ Copyright (C) 2021 Giorgio Maone <https://maone.net>
 SPDX-License-Identifier: GPL-3.0-or-later
 -->
 
-# NoScript Commmons Library !
+# NoScript Commmons Library
 
 ### What
 
@@ -18,6 +18,6 @@ Cross-browser issues have a chance to be fixed or worked around in one single pl
 
 ### How
 
-To start using the NSCL, just add this repository as a git submodule and integrate the [include.sh](https://github.com/hackademix/nscl/blob/main/include.sh) script in your browser extensions building workflow.
+To start using the NSCL, just add this repository as a git [submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules) and integrate the [include.sh](https://github.com/hackademix/nscl/blob/main/include.sh) script in your browser extensions building workflow.
 
-[NoScript Commons Library](https://noscript.net/common-library/nscl-logo.png?20210815)
+![NoScript Commons Library](https://raw.githubusercontent.com/hackademix/nscl/main/nscl-logo.png)

@@ -94,7 +94,24 @@ function patchWindow(patchingCallback, env = {}) {
       try {
         let  [propDef, getOrSet, propName] = defineAs && /^([gs]et)(?:\s+(\w+))$/.exec(defineAs) || [null, null, defineAs];
         let propDes = propName && Object.getOwnPropertyDescriptor(targetObject, propName);
-        if (!original) original = propDef && propDes ? propDes[getOrSet] : targetObject[defineAs];
+        if (getOrSet && !propDes) { // escalate through prototype chain
+          for (let proto = Object.getPrototypeOf(targetObject); proto; proto = Object.getPrototypeOf(proto)) {
+            propDes = Object.getOwnPropertyDescriptor(proto, propName);
+            if (propDes) {
+              targetObject = proto;
+              break;
+            }
+          }
+        }
+
+        if (!original) {
+          original = propDef && propDes ? propDes[getOrSet] : targetObject[defineAs];
+          if (!original) {
+            // It seems to be a brand new function, rather than a replacement.
+            // Let's ensure it appears as a native one with little hack: we proxy a Promise callback ;)
+            Promise.resolve(new Promise(resolve => original = resolve));
+          }
+        }
 
         let proxy = new Proxy(original, {
           apply(target, thisArg, args) {

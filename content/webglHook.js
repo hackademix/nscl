@@ -30,7 +30,7 @@ ns.on("capabilities", event => {
     for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
       if (!(canvas in scope)) continue;
 
-      const CanvasClass = window[canvas];
+      const CanvasClass = scope[canvas];
       const getContext = CanvasClass.prototype.getContext;
 
       const handler = cloneInto({

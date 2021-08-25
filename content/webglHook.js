@@ -30,8 +30,15 @@ ns.on("capabilities", event => {
     for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
       if (!(canvas in scope)) continue;
 
-      const CanvasClass = scope[canvas];
-      const getContext = CanvasClass.prototype.getContext;
+      // CAVEAT:
+      // we must use the X-Ray wrapper from window/globalThis for instanceof,
+      // but proxy the wrapped getContext method from unprivileged scope, see
+      // https://forums.informaction.com/viewtopic.php?p=104382
+
+      const CanvasClass = globalThis[canvas];
+      // globalThis future-proofs us for when we dare patchWorkers()
+
+      const getContext = scope[canvas].prototype.getContext;
 
       const handler = cloneInto({
         apply: function(targetObj, thisArg, argumentsList) {

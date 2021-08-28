@@ -90,7 +90,7 @@ function patchWindow(patchingCallback, env = {}) {
   let nativeExport = this && this.exportFunction || typeof exportFunction == "function";
   if (!nativeExport) {
     // Chromium
-    let exportFunction = (func, targetObject, {defineAs, original}) => {
+    let exportFunction = (func, targetObject, {defineAs, original} = {}) => {
       try {
         let  [propDef, getOrSet, propName] = defineAs && /^([gs]et)(?:\s+(\w+))$/.exec(defineAs) || [null, null, defineAs];
         let propDes = propName && Object.getOwnPropertyDescriptor(targetObject, propName);
@@ -105,7 +105,7 @@ function patchWindow(patchingCallback, env = {}) {
         }
 
         if (!original) {
-          original = propDef && propDes ? propDes[getOrSet] : targetObject[defineAs];
+          original = propDef && propDes ? propDes[getOrSet] : defineAs && targetObject[defineAs];
           if (!original) {
             // It seems to be a brand new function, rather than a replacement.
             // Let's ensure it appears as a native one with little hack: we proxy a Promise callback ;)

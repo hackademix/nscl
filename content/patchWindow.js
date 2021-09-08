@@ -104,13 +104,24 @@ function patchWindow(patchingCallback, env = {}) {
           }
         }
 
+        let toString = Function.prototype.toString;
+        let strVal;
         if (!original) {
           original = propDef && propDes ? propDes[getOrSet] : defineAs && targetObject[defineAs];
-          if (!original) {
-            // It seems to be a brand new function, rather than a replacement.
-            // Let's ensure it appears as a native one with little hack: we proxy a Promise callback ;)
-            Promise.resolve(new Promise(resolve => original = resolve));
+        }
+        if (!original) {
+          // It seems to be a brand new function, rather than a replacement.
+          // Let's ensure it appears as a native one with little hack: we proxy a Promise callback ;)
+          Promise.resolve(new Promise(resolve => original = resolve));
+          let name = propDef && propDes ? `${getOrSet} ${propName}` : defineAs;
+          if (name) {
+            let nameDef = Reflect.getOwnPropertyDescriptor(original, "name");
+            nameDef.value = name;
+            Reflect.defineProperty(original, "name", nameDef);
+            strVal = toString.call(original).replace(/^function \(\)/, `function ${name}()`)
           }
+        } else {
+          strVal = toString.call(original);
         }
 
         let proxy = new Proxy(original, {
@@ -118,6 +129,20 @@ function patchWindow(patchingCallback, env = {}) {
             return func.apply(thisArg, args);
           }
         });
+
+        if (!exportFunction._toStringMap) {
+          let map = new WeakMap();
+          exportFunction._toStringMap = map;
+          let toStringProxy = new Proxy(toString, {
+            apply(target, thisArg, args) {
+              return map.has(thisArg) ? map.get(thisArg) : target.apply(thisArg, args);
+            }
+          });
+          map.set(toStringProxy, toString.apply(toString));
+          Function.prototype.toString = toStringProxy;
+        }
+        exportFunction._toStringMap.set(proxy, strVal);
+
         if (propName) {
           if (!propDes) {
             targetObject[propName] = proxy;

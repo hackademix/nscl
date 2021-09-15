@@ -86,7 +86,7 @@
   browser.webRequest.onBeforeSendHeaders.addListener(r => {
     let crossSite = corsInfo(r);
     if (!(crossSite && crossSite.authorize)) return;
-    // her we try to force a cached response
+    // here we try to force a cached response
     let {requestHeaders} = r;
     for (let h of requestHeaders) {
       let name = h.name.toLowerCase();

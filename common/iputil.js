@@ -69,6 +69,7 @@ var iputil = {
     return iputil._localIP6Rx.test(addr) ||
       iputil._localIPMatcher.testIP(addr = iputil.ip6to4(addr)) ||
       iputil.localExtras && iputil.localExtras.testIP(addr) ||
+      typeof WAN === "object" && // only if a WAN resolver has been provided (e.g. by ABE)
       WAN.ipMatcher && WAN.ipMatcher.testIP(addr);
   },
   _ip6to4Rx: /^2002:([A-F0-9]{2})([A-F0-9]{2}):([A-F0-9]{2})([A-F0-9]{2})|:(?:\d+\.){3}\d+$/i,

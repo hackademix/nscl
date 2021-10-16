@@ -24,7 +24,7 @@ var TabCache = (() => {
 
   browser.tabs.onUpdated.addListener((tabId, changes, tab) => {
     cache.set(tabId, tab);
-  }, {properties: ["url"]});
+  });
 
   browser.tabs.onRemoved.addListener(tabId => {
     cache.delete(tabId);

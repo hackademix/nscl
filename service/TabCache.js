@@ -22,12 +22,12 @@ var TabCache = (() => {
 
   let cache = new Map();
 
-  browser.tabs.onUpdated.addListener(tab => {
-    cache.set(tab.id, tab);
-  });
+  browser.tabs.onUpdated.addListener((tabId, changes, tab) => {
+    cache.set(tabId, tab);
+  }, {properties: ["url"]});
 
-  browser.tabs.onRemoved.addListener(tab => {
-    cache.delete(tab.id);
+  browser.tabs.onRemoved.addListener(tabId => {
+    cache.delete(tabId);
   });
 
   (async () => {

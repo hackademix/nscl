@@ -36,7 +36,7 @@ var DocStartInjection = (() => {
     let {id, tabId, frameId, url} = payload;
     let ret = false;
     if (tabId === sender.tab.id && frameId === sender.frameId && url === sender.url) {
-      end(payload);
+      end(payload, true);
       ret = true;
     }
     return Promise.resolve(ret);
@@ -155,14 +155,19 @@ var DocStartInjection = (() => {
     debug(`DocStartInjection at ${url}, ${attempts} attempts, success = ${success}, repeat = ${repeat}.`);
   }
 
-  function end(request) {
+  function end(request, immediate = false) {
     let id = getId(request);
     let script = pending.get(id);
     if (script) {
       if (repeating) {
         run(request, false);
       } else {
-        script.unregister();
+        pending.delete(id);
+        if (immediate) {
+          script.unregister();
+        } else {
+          setTimeout(() => script.unregister(), 500);
+        }
       }
     }
   }

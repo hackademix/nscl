@@ -128,22 +128,16 @@
         if (!(msg !== null && sender)) {
           return CANCEL;
         }
-        let result = notifyListeners(msg, sender);
-        if (result instanceof Promise) {
-
-          // On Chromium, if the promise is not resolved yet,
-          // we redirect the XHR to the same URL (hence same msgId)
-          // while the result get cached for asynchronous retrieval
-          result.then(r => {
-            asyncResults.set(msgId, result = r);
-          });
-          return asyncResults.has(msgId)
-          ? asyncRet(msgId) // promise was already resolved
-          : {redirectUrl: url.replace(
-              /&redirects=(\d+)|$/, // redirects count to avoid loop detection
-              (all, count) => `&redirects=${parseInt(count) + 1 || 1}`)};
-        }
-        return ret(result);
+        let result = Promise.resolve(notifyListeners(msg, sender));
+        // On Chromium, if the promise is not resolved yet,
+        // we redirect the XHR to the same URL (hence same msgId)
+        // while the result get cached for asynchronous retrieval
+        result.then(r => storeAsyncRet(msgId, r));
+        return asyncResults.has(msgId)
+        ? asyncRet(msgId) // promise was already resolved
+        : {redirectUrl: url.replace(
+            /&redirects=(\d+)|$/, // redirects count to avoid loop detection
+            (all, count) => `&redirects=${parseInt(count) + 1 || 1}`)};
       } catch(e) {
         console.error(e);
         return CANCEL;
@@ -164,12 +158,29 @@
         return replaced ? {responseHeaders} : null;
       };
 
-      let ret = r => ({redirectUrl:  `data:application/json,${JSON.stringify(r)}`})
+      let ret = r => ({redirectUrl:  `data:application/json,${encodeURIComponent(JSON.stringify(r))}`});
+
       let asyncRet = msgId => {
-        let result = asyncResults.get(msgId);
-        asyncResults.delete(msgId);
-        return ret(result);
-      }
+        let chunks = asyncResults.get(msgId);
+        let chunk = chunks.shift();
+        let more = chunks.length;
+        if (more === 0) {
+          asyncResults.delete(msgId);
+        }
+        return ret({chunk, more});
+      };
+
+      const CHUNK_SIZE = 500000; // Work around any browser-dependent URL limit
+      let storeAsyncRet = (msgId, r) => {
+        r = JSON.stringify(r);
+        let len = r.length;
+        let chunksCount = Math.ceil(len / CHUNK_SIZE);
+        let chunks = [];
+        for (let j = 0; j < chunksCount; j++) {
+          chunks.push(r.substr(j * CHUNK_SIZE, CHUNK_SIZE));
+        }
+        asyncResults.set(msgId, chunks);
+      };
 
       let listeners = new Set();
       function notifyListeners(msg, sender) {
@@ -303,11 +314,21 @@
         // we can't access sessionStorage: let's act as we've already reloaded
         reloaded = true;
       }
+      let chunks = [];
       for (let attempts = 3; attempts-- > 0;) {
         try {
           r.open("GET", url, false);
           r.send(null);
           result = JSON.parse(r.responseText);
+          if ("chunk" in result) {
+            let {chunk, more} = result;
+            chunks.push(chunk);
+            if (more) {
+              attempts++;
+              continue;
+            }
+            result = JSON.parse(chunks.join(''));
+          }
           break;
         } catch(e) {
           console.error(`syncMessage error in ${document.URL}: ${e.message} (response ${r.responseText}, remaining attempts ${attempts})`);

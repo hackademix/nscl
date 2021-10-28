@@ -37,26 +37,8 @@
           if (!wrapper) return;
           let {id} = wrapper;
           pending.set(id, wrapper);
-          let result;
-          let unsuspend = result => {
-            pending.delete(id);
-            if (wrapper.unsuspend) {
-              wrapper.unsuspend();
-            }
-            return result;
-          }
-          try {
-            result = notifyListeners(JSON.stringify(wrapper.payload), sender);
-          } catch(e) {
-            unsuspend();
-            throw e;
-          }
-          /*
-          // Uncomment me to add artificial delay for debugging purposes
-          let tmpResult = result;
-          result = new Promise(resolve => setTimeout(() => resolve(tmpResult), 500));
-          */
-          return Promise.resolve(result).then(result => unsuspend(result));
+          wrapper.result = Promise.resolve(notifyListeners(JSON.stringify(wrapper.payload), sender));
+          return Promise.resolve(null);
         });
       }
 
@@ -78,23 +60,18 @@
 
         if (MOZILLA || tabId === TAB_ID_NONE) {
           // this shoud be a mozilla suspension request
-          return params.get("suspend") ? new Promise(resolve => {
-            if (pending.has(msgId)) {
-              let wrapper = pending.get(msgId);
-              if (!wrapper.unsuspend) {
-                wrapper.unsuspend = resolve;
-              } else {
-                let {unsuspend} = wrapper;
-                wrapper.unsuspend = () => {
-                  unsuspend();
-                  resolve();
-                }
+          if (pending.has(msgId)) {
+            let wrapper = pending.get(msgId);
+            pending.delete(msgId);
+            return (async () => {
+              try {
+                return ret({payload: (await wrapper.result)});
+              } catch (e) {
+                return ret({error: { message: e.message, stack: e.stack }});
               }
-              return;
-            }
-            resolve();
-          }).then(() => ret("go on"))
-          : CANCEL; // otherwise, bail
+            })()
+          }
+          return CANCEL; // otherwise, bail
         }
         // CHROME from now on
         let documentUrl = params.get("url");
@@ -244,57 +221,12 @@
       }
 
       if (MOZILLA) {
-
-        let startTime = Date.now(); // DEV_ONLY
-        let suspendURL = url + "&suspend=true";
-        let suspended = 0;
-        let suspendedId = 0;
-        let suspend = () => {
-          suspended++;
-          let id = suspendedId++;
-          console.debug("sendSyncMessage suspend #%s/%s", id, suspended);
-          try {
-            let r = new XMLHttpRequest();
-            r.open("GET", suspendURL, false);
-            r.send(null);
-          } catch (e) {
-            console.error(e);
-          }
-          suspended--;
-          console.debug("sendSyncMessage resume #%s/%s - %sms", id, suspended, Date.now() - startTime); // DEV_ONLY
-        };
-
-        let domSuspender = new MutationObserver(records => {
-          suspend();
-        });
-        domSuspender.observe(document, {childList: true, subtree: true});
-
-        let finalize = () => {
-          console.debug("sendSyncMessage finalizing");
-          domSuspender.disconnect();
-        };
-
         // on Firefox we first need to send an async message telling the
         // background script about the tab ID, which does not get sent
         // with "privileged" XHR
-        let result;
-
         browser.runtime.sendMessage(
           {__syncMessage__: {id: msgId, payload: msg}}
-        ).then(r => {
-          result = r;
-          if (callback) callback(r);
-          finalize();
-        }).catch(e => {
-          throw e;
-        });
-
-        try {
-          suspend();
-        } finally {
-          finalize();
-        }
-        return result;
+        );
       }
       // then we send the payload using a privileged XHR, which is not subject
       // to CORS but unfortunately doesn't carry any tab id except on Chromium
@@ -303,19 +235,8 @@
       let r = new XMLHttpRequest();
       let result;
       let key = `${ENDPOINT_PREFIX}`;
-      let reloaded;
-      try {
-        reloaded = sessionStorage.getItem(key) === "reloaded";
-        if (reloaded) {
-          sessionStorage.removeItem(key);
-          console.log("Syncmessage attempt aftert reloading page.");
-        }
-      } catch (e) {
-        // we can't access sessionStorage: let's act as we've already reloaded
-        reloaded = true;
-      }
       let chunks = [];
-      for (let attempts = 3; attempts-- > 0;) {
+      for (;;) {
         try {
           r.open("GET", url, false);
           r.send(null);
@@ -324,29 +245,17 @@
             let {chunk, more} = result;
             chunks.push(chunk);
             if (more) {
-              attempts++;
               continue;
             }
             result = JSON.parse(chunks.join(''));
+          } else {
+            if (result.error) throw result.error;
+            result = "payload" in result ? result.payload : result;
           }
-          break;
         } catch(e) {
-          console.error(`syncMessage error in ${document.URL}: ${e.message} (response ${r.responseText}, remaining attempts ${attempts})`);
-          if (attempts === 0) {
-            if (reloaded) {
-              console.log("Already reloaded or no sessionStorage, giving up.")
-              break;
-            }
-            sessionStorage.setItem(key, "reloaded");
-            if (sessionStorage.getItem(key)) {
-              stop();
-              location.reload();
-              return {};
-            } else {
-              console.error(`Cannot set sessionStorage item ${key}`);
-            }
-          }
+          console.error(`syncMessage error in ${document.URL}: ${e.message} (response ${r.responseText})`);
         }
+        break;
       }
       if (callback) callback(result);
       return result;

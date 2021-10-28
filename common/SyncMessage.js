@@ -20,9 +20,9 @@
 
 "use strict";
 (() => {
-  let ENDPOINT_ORIGIN = "https://255.255.255.255";
-  let ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/${browser.runtime.getURL("")}?`;
   let MOZILLA = "mozSystem" in XMLHttpRequest.prototype;
+  let ENDPOINT_ORIGIN = MOZILLA ? "https://[::]" : "file://[::]";
+  let ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/nscl/${browser.runtime.getURL("syncMessage")}?`;
 
   if (browser.webRequest) {
     if (typeof browser.runtime.onSyncMessage !== "object") {

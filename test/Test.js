@@ -25,14 +25,20 @@ var Test = (() => {
     failed: 0,
     async include(tests) {
       for(let test of tests) {
-        let src = `/test/${test}_test.js`;
+        let src = test;
+        if (!src.startsWith("/")) {
+          src = `/test/${src}`;
+        }
+        if (!src.endsWith("_test.js")) {
+          src = `${src}_test.js`;
+        }
         log(`Testing ${test}`);
         this.passed = this.failed = 0;
         try {
           await include(src);
         } catch (e) {
           // we might omit some tests in publicly available code for Security
-          // reasons, e.g. XSS_test.js
+          // reasons, e.g. embargoing new XSS vectors
           log("Skipping test ", test, e);
           continue;
         }

@@ -37,12 +37,15 @@
 
   // secureDomainKey should be "downgraded" by UNTRUSTED, issue #126
   p1.set(Sites.secureDomainKey("evil.com"), p1.UNTRUSTED);
-  let p2 = new Policy(p1.dry());
-  debug("p1", JSON.stringify(p1.dry()));
-  debug("p2", JSON.stringify(p2.dry()));
+
+  // treating Tor onion URLs like HTTPS
   let onionSecureCurrent = Sites.onionSecure;
   Sites.onionSecure = true;
   p1.set("http://some.onion", p1.TRUSTED);
+
+  // p2 copy to test cloning / serialization
+  let p2 = new Policy(p1.dry());
+
   for(let t of [
     () => p2.can("https://noscript.net"),
     () => !p2.can("http://noscript.net"),

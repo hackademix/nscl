@@ -158,7 +158,7 @@ var patchWorkers = (() => {
         }
 
         // patch Worker & SharedWorker.post to buffer postMessage() calls
-        // and EventTarget to replay liseners addition/removal
+        // and EventTarget to replay listeners addition/removal
         // until deferred objects are finally ready
         let replayCallsHandler = {
           apply(target, thisArg, args) {

@@ -192,7 +192,7 @@ var patchWorkers = (() => {
             this.complete = complete;
           }
         }
-        wo(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
+        if (ServiceWorkerContainer) wo(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
           apply(target, thisArg, args) {
             let register = () => Reflect.apply(target, thisArg, args);
             try {

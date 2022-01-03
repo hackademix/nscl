@@ -60,8 +60,8 @@
   browser.runtime.onMessage.addListener(({__patchWorkers__}, {tab, url: documentUrl}) => {
     if (!__patchWorkers__) return;
     try {
-      let {url, patch, isService} = __patchWorkers__;
-      let tabId = isService && !chrome.debugger ? -1 : tab.id;
+      let {url, patch, isServiceOrShared} = __patchWorkers__;
+      let tabId = isServiceOrShared && !chrome.debugger ? -1 : tab.id;
       let byOrigin = patchesByTab.get(tabId);
       if (!byOrigin) patchesByTab.set(tabId, byOrigin = new Map());
       let patchInfo = byOrigin.get(documentUrl);

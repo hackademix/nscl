@@ -82,8 +82,8 @@ var patchWorkers = (() => {
           }
         };
 
-        function mustDeferWorker(url, isService) {
-          if (!port.postMessage({type: "patchUrl", url, isService})) {
+        function mustDeferWorker(url, isServiceOrShared) {
+          if (!port.postMessage({type: "patchUrl", url, isServiceOrShared})) {
             let workers = workersByUrl.get(url);
             if (!workers) workersByUrl.set(url, workers = new Set());
             return workers;
@@ -136,7 +136,7 @@ var patchWorkers = (() => {
 
             } else {
               url = url.href;
-              let workers = mustDeferWorker(url);
+              let workers = mustDeferWorker(url, (target.wrappedJSObject || target) === SharedWorker);
               if (workers) {
                 args[0] = "data:"
                 let worker = construct(target, args);
@@ -260,13 +260,13 @@ var patchWorkers = (() => {
             return joinPatches();
           case "patchUrl":
           {
-            let {url, isService} = msg;
+            let {url, isServiceOrShared} = msg;
             url = `${url}`;
-            if (urls.has(url) && !isService) {
+            if (urls.has(url) && !isServiceOrShared) {
               return true;
             }
             browser.runtime.sendMessage({
-              __patchWorkers__: { url, patch: joinPatches(), isService }
+              __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
             }).then(() => {
               urls.add(url);
               port.postMessage({type: "urlPatched", url});

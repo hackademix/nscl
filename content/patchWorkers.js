@@ -176,7 +176,7 @@ var patchWorkers = (() => {
             replayMethods.set(proto, eventTargetMethods);
           }
           replayMethods.set(window.Worker.prototype, ["postMessage", "terminate"]);
-          replayMethods.set(window.MessagePort.prototype, ["postMessage", "start"]);
+          replayMethods.set(window.MessagePort.prototype, ["postMessage", "start", "close"]);
 
           for (let [proto, methods] of replayMethods.entries()) {
             for (let method of methods) {

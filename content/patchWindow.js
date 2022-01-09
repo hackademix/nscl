@@ -120,9 +120,9 @@ function patchWindow(patchingCallback, env = {}) {
             Reflect.defineProperty(original, "name", nameDef);
             strVal = toString.call(original).replace(/^function \(\)/, `function ${name}()`)
           }
-        } else {
-          strVal = toString.call(original);
         }
+
+        strVal = strVal || toString.call(original);
 
         let proxy = new Proxy(original, {
           apply(target, thisArg, args) {
@@ -135,7 +135,7 @@ function patchWindow(patchingCallback, env = {}) {
           exportFunction._toStringMap = map;
           let toStringProxy = new Proxy(toString, {
             apply(target, thisArg, args) {
-              return map.has(thisArg) ? map.get(thisArg) : target.apply(thisArg, args);
+              return map.has(thisArg) ? map.get(thisArg) : Reflect.apply(target, thisArg, args);
             }
           });
           map.set(toStringProxy, toString.apply(toString));

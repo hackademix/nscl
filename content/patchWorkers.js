@@ -179,8 +179,11 @@ var patchWorkers = (() => {
           replayMethods.set(window.MessagePort.prototype, ["postMessage", "start", "close"]);
 
           for (let [proto, methods] of replayMethods.entries()) {
+            let wproto = wo(proto);
             for (let method of methods) {
-              wo(proto)[method] = cloneInto(proxify(wo(proto)[method], replayCallsHandler), window, {cloneFunctions: true});
+              let des = Object.getOwnPropertyDescriptor(wproto, method);
+              des.value = cloneInto(proxify(des.value, replayCallsHandler), window, {cloneFunctions: true})
+              Object.defineProperty(wproto, method, des);
             }
           }
         } catch (e) {

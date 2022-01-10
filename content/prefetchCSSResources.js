@@ -332,7 +332,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       && styleNode.href) {
       if (styleNode.media) {
         let mql = window.matchMedia(styleNode.media);
-        if (!mql.matches) { // don't soft disable if current media query already does it
+        if (!mql.matches) { // don't soft disable if current media query already does it ()
           getShadow(styleNode).mql = mql; // keep a reference alive until the node is not GCed
           mql.onchange = e => {
             checkNode(styleNode);
@@ -341,6 +341,10 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         }
       }
       keepDisabled(styleNode);
+    } else if (styleNode.querySelectorAll) {
+      for (let n of styleNode.querySelectorAll("style,link")) {
+        checkNode(n);
+      }
     }
   }
 

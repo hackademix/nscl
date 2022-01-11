@@ -30,9 +30,10 @@ var patchWorkers = (() => {
   return patch => {
 
     if (patches.size === 0) {
-      let modifyWindow = (w, {port}) => {
+      let modifyWindow = (w, {port, xray}) => {
 
-        let xray = window.wrappedJSObject === w;
+        let {window} = xray;
+
         let proxy2Object = new WeakMap();
         let shadows = new WeakMap();
         let workersByUrl = new Map();
@@ -46,9 +47,9 @@ var patchWorkers = (() => {
         let construct = Reflect.construct.bind(Reflect);
         let error = console.error.bind(console);
 
-        let wo = obj => xray && obj.wrappedJSObject || obj;
+
         let proxify = (obj, handler) => {
-            let proxy = new Proxy(wo(obj), cloneInto(handler, window, {cloneFunctions: true}));
+            let proxy = new Proxy(xray.unwrap(obj), xray.forPage(handler));
             proxy2Object.set(proxy, obj);
             return proxy;
         };
@@ -66,17 +67,17 @@ var patchWorkers = (() => {
                 (sw.props || (sw.props = {}))[prop] = value;
               }
             }
-            return Reflect.set(wo(target), prop, value);
+            return Reflect.set(xray.unwrap(target), prop, value);
           },
           get(target, prop, receiver) {
             let sw = shadows.get(receiver);
-            let obj = wo(target);
+            let obj = xray.unwrap(target);
 
             if (sw) {
               if (obj instanceof SharedWorker && prop === "port") {
                 return sw.port;
               }
-              if (sw.finalObject) obj = wo(sw.finalObject);
+              if (sw.finalObject) obj = xray.unwrap(sw.finalObject);
             }
             return Reflect.get(obj, prop);
           }
@@ -163,7 +164,7 @@ var patchWorkers = (() => {
         let replayCallsHandler = {
           apply(target, thisArg, args) {
             let sw = shadows.get(thisArg);
-            args = wo(args);
+            args = xray.unwrap(args);
             if (!sw) return Reflect.apply(target, thisArg, args);
             if (sw.finalObject) return Reflect.apply(target, sw.finalObject, args);
             (sw.replayCalls = sw.replayCalls || []).push({target, args});
@@ -171,19 +172,18 @@ var patchWorkers = (() => {
         }
         try {
           let replayMethods = new Map();
-          let eventTargetMethods = Object.keys(window.EventTarget.prototype); // ["addEventListener", "removeEventListener", "dispatchEvent"]
-          for (let proto of [window.EventTarget.prototype, window.Worker.prototype.__proto__, window.SharedWorker.prototype.__proto__]) {
+          let eventTargetMethods = Object.keys(w.EventTarget.prototype); // ["addEventListener", "removeEventListener", "dispatchEvent"]
+          for (let proto of [w.EventTarget.prototype, w.Worker.prototype.__proto__, w.SharedWorker.prototype.__proto__]) {
             replayMethods.set(proto, eventTargetMethods);
           }
-          replayMethods.set(window.Worker.prototype, ["postMessage", "terminate"]);
-          replayMethods.set(window.MessagePort.prototype, ["postMessage", "start", "close"]);
+          replayMethods.set(w.Worker.prototype, ["postMessage", "terminate"]);
+          replayMethods.set(w.MessagePort.prototype, ["postMessage", "start", "close"]);
 
           for (let [proto, methods] of replayMethods.entries()) {
-            let wproto = wo(proto);
             for (let method of methods) {
-              let des = Object.getOwnPropertyDescriptor(wproto, method);
-              des.value = cloneInto(proxify(des.value, replayCallsHandler), window, {cloneFunctions: true})
-              Object.defineProperty(wproto, method, des);
+              let des = Object.getOwnPropertyDescriptor(proto, method);
+              des.value = xray.forPage(proxify(des.value, replayCallsHandler));
+              Object.defineProperty(proto, method, des);
             }
           }
         } catch (e) {
@@ -195,7 +195,7 @@ var patchWorkers = (() => {
             this.complete = complete;
           }
         }
-        if (ServiceWorkerContainer) wo(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
+        if (ServiceWorkerContainer) xray.unwrap(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
           apply(target, thisArg, args) {
             let register = () => Reflect.apply(target, thisArg, args);
             try {

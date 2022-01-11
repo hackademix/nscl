@@ -35,11 +35,24 @@
  *        It will be called as patchingCallback(unwrappedWindow, env).
  * @param {object} env
  *        a JSON-serializable object to made available to patchingCallback as
- *        its second argument*
+ *        its second argument. It gets augmented by two additional properties:
+ *        1. a Port (port: {postMessage(), onMessage()}) object
+ *           allowing the injected script to communicate with
+ *           the privileged content script by calling  port.postMessage(msg, [event])
+ *           and/or by listening to a port.onMessage(msg, event) user-defined callback.
+ *        2. A "xray" object property to help handling
+ *           Firefox's XRAY wrappers.
+ *           xray: {
+ *             enabled: true, // false on Chromium
+ *             unwrap(obj), // returns the XPC-wrapped object - or just obj on Chromium
+ *             wrap(obj), // returns the XPC wrapper around the object - or just obj on Chromium
+ *             forPage(obj), // returns cloneInto(obj) including functions and DOM objects - or just obj on Chromium
+ *             window, // the XPC-wrapped version of unwrappedWindow, or unwrappedWindow itself on Chromium
+ *           }
  * @returns {object} port
- *        A Port object to be used to communicate with the privileged content
- *        script, by using port.postMessage(msg, [event]) and
- *        the port.onMessage(msg, event) user-defined callback.
+ *        A Port object allowing the privileged content script to communicate
+ *        with the injected script on the page by calling port.postMessage(msg, [event])
+ *        and/or by listening to a port.onMessage(msg, event) user-defined callback.
  */
 
 function patchWindow(patchingCallback, env = {}) {
@@ -189,14 +202,25 @@ function patchWindow(patchingCallback, env = {}) {
     script.remove();
     return port;
   }
+
   env.port = new Port("page", "extension");
+
+  let xrayMake = (enabled, wrap, unwrap = wrap, forPage) => ({enabled, wrap, unwrap, forPage});
+  let xray = typeof XPCNativeWrapper === "undefined"
+    ? xrayMake(false, o => o)
+    : xrayMake(true, o => XPCNativeWrapper(o), o => XPCNativeWrapper.unwrap(o),
+      function(obj, win = this.window || window) {
+        return cloneInto(obj, win, {cloneFunctions: true, wrapReflectors: true});
+      });
 
   const patchedWindows = new WeakSet(); // track them to avoid indirect recursion
 
   // win: window object to modify.
   function modifyWindow(win) {
     try {
-      win = win.wrappedJSObject || win;
+      win = xray.unwrap(win);
+      env.xray = Object.assign({window: xray.wrap(win)}, xray);
+
       if (patchedWindows.has(win)) return;
       patchedWindows.add(win);
       patchingCallback(win, env);
@@ -226,6 +250,77 @@ function patchWindow(patchingCallback, env = {}) {
       for (let iface of ["Frame", "IFrame", "Object"]) {
         let proto = win[`HTML${iface}Element`].prototype;
         modifyContentProperties(proto, property)
+      }
+    }
+    // auto-trigger window patching whenever new elements are added to the DOM
+    let patchAll = () => {
+      for (let j = 0; j in win; j++) {
+        try {
+          modifyWindow(win[j]);
+        } catch (e) {
+          console.error(e, `Patching frames[${j}]`);
+        }
+      }
+    };
+
+    let xrayWin = xray.wrap(win);
+    let observer = new MutationObserver(patchAll);
+    observer.observe(win.document, { subtree: true, childList: true });
+    let patchHandler = {
+      apply(target, thisArg, args) {
+        let ret = Reflect.apply(target, thisArg, args);
+        thisArg = thisArg && xray.wrap(thisArg);
+        if (thisArg) {
+          thisArg = xray.wrap(thisArg);
+          if ((thisArg.ownerDocument || thisArg) === xrayWin.document) {
+            patchAll();
+          }
+        }
+        return ret ? xray.forPage(ret, win) : ret;
+      }
+    };
+
+    let domChangers = {
+      Element: [
+        "set innerHTML", "set outerHTML",
+        "after", "append", "appendChild",
+        "before",
+        "insertAdjacentElement", "insertAdjacentHTML", "insertBefore",
+        "prepend",
+        "replaceChildren", "replaceWith", "replaceChild",
+        "setHTML",
+      ],
+      Document: [
+        "append", "prepend", "replaceChildren",
+        "write", "writeln",
+      ]
+    };
+
+    function patch(proto, method) {
+      let accessor;
+      if (method.startsWith("set ")) {
+        accessor = "set";
+        method = method.replace("set ", "");
+      } else {
+        accessor = "value";
+      }
+      if (!(method in proto)) return;
+      while (!proto.hasOwnProperty(method)) {
+        proto = Object.getPrototypeOf(proto);
+        if (!proto) {
+          console.error(`Couldn't find property ${method} on the prototype chain!`);
+          return;
+        }
+      }
+      let des = Object.getOwnPropertyDescriptor(proto, method);
+      des[accessor] = new Proxy(des[accessor], patchHandler);
+      win.Object.defineProperty(proto, method, xray.forPage(des, win));
+    }
+
+    for (let [obj, methods] of Object.entries(domChangers)) {
+      let proto = win[obj].prototype;
+      for (let method of methods) {
+        patch(proto, method);
       }
     }
   }

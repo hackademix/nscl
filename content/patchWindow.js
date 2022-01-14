@@ -205,7 +205,7 @@ function patchWindow(patchingCallback, env = {}) {
 
   env.port = new Port("page", "extension");
 
-  let xrayMake = (enabled, wrap, unwrap = wrap, forPage) => ({enabled, wrap, unwrap, forPage});
+  let xrayMake = (enabled, wrap, unwrap = wrap, forPage = wrap) => ({enabled, wrap, unwrap, forPage});
   let xray = typeof XPCNativeWrapper === "undefined"
     ? xrayMake(false, o => o)
     : xrayMake(true, o => XPCNativeWrapper(o), o => XPCNativeWrapper.unwrap(o),

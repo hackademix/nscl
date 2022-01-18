@@ -234,7 +234,6 @@
       url += `&msg=${encodeURIComponent(JSON.stringify(msg))}`; // adding the payload
       let r = new XMLHttpRequest();
       let result;
-      let key = `${ENDPOINT_PREFIX}`;
       let chunks = [];
       for (;;) {
         try {

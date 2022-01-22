@@ -323,6 +323,7 @@ function patchWindow(patchingCallback, env = {}) {
         patch(proto, method);
       }
     }
+    if (patchWindow.onObject) patchWindow.onObject.add(patchAll);
   }
 
   function modifyContentProperties(proto, property) {
@@ -347,4 +348,36 @@ function patchWindow(patchingCallback, env = {}) {
 
   modifyWindow(window);
   return port;
+}
+
+if (typeof XPCNativeWrapper !== "undefined") {
+  // make up for object element initialization inconsistencies on Firefox
+  let callbacks = new Set();
+  patchWindow.onObject = {
+    add(callback) {
+      callbacks.add(callback);
+    },
+    fire() {
+      for (let callback of [...callbacks]) {
+        callback();
+      }
+    }
+  };
+
+  const eventId = "__nscl_patchWindow_onObject__";
+  const intercepted = new WeakSet();
+  addEventListener(eventId, e => {
+    let {target} = e;
+    if (target instanceof HTMLObjectElement &&
+      target.contentWindow &&
+      !intercepted.has(target.contentWindow)) {
+      intercepted.add(target.contentWindow);
+      e.stopImmediatePropagation();
+      patchWindow.onObject.fire();
+    }
+  }, true);
+
+  if (frameElement instanceof HTMLObjectElement) {
+    frameElement.dispatchEvent(new CustomEvent(eventId));
+  }
 }

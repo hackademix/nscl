@@ -181,7 +181,7 @@ var Policy = (() => {
         perms = this.sites.get(siteMatch);
         if (ctx) {
           contextMatch = perms.contextual.match(ctx);
-          if (contextMatch) perms = perms.contextual.get(ctx);
+          if (contextMatch) perms = perms.contextual.get(contextMatch);
         }
       } else {
         perms = this.DEFAULT;

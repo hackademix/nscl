@@ -78,11 +78,12 @@ if ("MediaSource" in window) {
       mediaBlocker = !ns.allows("media");
       if (mediaBlocker) debug("mediaBlocker set via fetched policy.")
     });
-    patchWindow(win => {
+    patchWindow((win, {xray})=> {
       let unpatched = new Map();
       function patch(obj, methodName, replacement) {
         let methods = unpatched.get(obj) || {};
-        methods[methodName] = obj[methodName];
+        let method = xray.getSafeMethod(obj, methodName);
+        methods[methodName] = method;
         obj[methodName] = exportFunction(replacement, obj, {original: obj[methodName]});
         unpatched.set(obj, methods);
       }

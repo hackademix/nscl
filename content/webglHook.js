@@ -24,7 +24,7 @@ ns.on("capabilities", event => {
   debug("WebGL Hook", document.URL, document.documentElement && document.documentElement.innerHTML, ns.capabilities); // DEV_ONLY
   if (ns.allows("webgl")) return;
 
-  function modifyGetContext(scope, env) {
+  function modifyGetContext(scope, {port, xray}) {
     let dispatchEvent = EventTarget.prototype.dispatchEvent;
     let { Event } = scope;
     for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
@@ -38,13 +38,13 @@ ns.on("capabilities", event => {
       const CanvasClass = globalThis[canvas];
       // globalThis future-proofs us for when we dare patchWorkers()
 
-      const getContext = scope[canvas].prototype.getContext;
+      const getContext = xray.getSafeMethod(scope[canvas].prototype, "getContext");
 
       const handler = cloneInto({
         apply: function(targetObj, thisArg, argumentsList) {
           if (thisArg instanceof CanvasClass && /webgl/i.test(argumentsList[0])) {
             let target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
-            env.port.postMessage("webgl", target);
+            port.postMessage("webgl", target);
             return null;
           }
           return getContext.call(thisArg, ...argumentsList);

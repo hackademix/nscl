@@ -35,7 +35,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   let corsSheetURLs = new Set();
   let corsSheetsByHref = new Map();
 
-  (patchWindow((win, env) => {
+  (patchWindow((win, {port, xray}) => {
     let { StyleSheet } = win;
     let ssProto = StyleSheet.prototype;
     let cssProto = win.CSSStyleSheet.prototype;
@@ -43,9 +43,9 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     let getOwnerNode = Object.getOwnPropertyDescriptor(ssProto, "ownerNode").get;
     let postMessage = (msg, target) => {
       if (target instanceof StyleSheet) target = getOwnerNode.apply(target);
-      return target && env.port.postMessage(msg, target);
+      return target && port.postMessage(msg, target);
     };
-    if (!window.wrappedJSObject) {
+    if (!xray.enabled) {
       // Only for Chromium, requiring relaxed CORS and therefore
       // needing cssRules protection for "privileged" cross-site links.
       for (let prop of ["rules", "cssRules"]) {

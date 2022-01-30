@@ -205,13 +205,41 @@ function patchWindow(patchingCallback, env = {}) {
 
   env.port = new Port("page", "extension");
 
-  let xrayMake = (enabled, wrap, unwrap = wrap, forPage = wrap) => ({enabled, wrap, unwrap, forPage});
+  function getSafeMethod(obj, method) {
+    return isDeadTarget(obj, method) ? xray.wrap(obj)[method] : obj[method];
+  }
+
+  function getSafeDescriptor(proto, prop, accessor) {
+    let des = Object.getOwnPropertyDescriptor(proto, prop);
+    return isDeadTarget(des, accessor) ?
+      Object.getOwnPropertyDescriptor(xray.wrap(proto), prop)
+      : des;
+  }
+
+  let xrayMake = (enabled, wrap, unwrap = wrap, forPage = wrap) => ({
+      enabled, wrap, unwrap, forPage,
+      getSafeMethod, getSafeDescriptor
+    });
+
   let xray = typeof XPCNativeWrapper === "undefined"
     ? xrayMake(false, o => o)
     : xrayMake(true, o => XPCNativeWrapper(o), o => XPCNativeWrapper.unwrap(o),
       function(obj, win = this.window || window) {
         return cloneInto(obj, win, {cloneFunctions: true, wrapReflectors: true});
       });
+
+  var isDeadTarget = xray.enabled && document.readyState === "complete" ?
+    (obj, method) => {
+      // We may be repatching this already loaded window during an extension update:
+      // beware of dead object from killed obsolete content script!
+      try {
+        obj[method].apply(null);
+      } catch (e) {
+        return e.message.includes("dead object");
+      }
+      return false;
+    }
+  : () => false;
 
   const patchedWindows = new WeakSet(); // track them to avoid indirect recursion
 
@@ -312,7 +340,7 @@ function patchWindow(patchingCallback, env = {}) {
           return;
         }
       }
-      let des = Object.getOwnPropertyDescriptor(proto, method);
+      let des = getSafeDescriptor(proto, method, accessor);
       des[accessor] = new Proxy(des[accessor], patchHandler);
       win.Object.defineProperty(proto, method, xray.forPage(des, win));
     }
@@ -327,7 +355,7 @@ function patchWindow(patchingCallback, env = {}) {
   }
 
   function modifyContentProperties(proto, property) {
-    let descriptor = Object.getOwnPropertyDescriptor(proto, property);
+    let descriptor = getSafeDescriptor(proto, property, "get");
     let origGetter = descriptor.get;
     let replacements = {
       contentWindow() {

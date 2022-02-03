@@ -58,6 +58,7 @@ var Test = (() => {
       } catch(e) {
         error(e, "[TEST]");
       }
+      return r;
     },
     report() {
       let {passed, failed} = this;

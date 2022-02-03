@@ -45,11 +45,9 @@ var ContentScriptOnce = (() => {
       types:  ["main_frame", "sub_frame", "object"]
     };
 
-    let apis = [browser.webRequest, browser.webNavigation];
     for (let event of ["onCompleted", "onErrorOccurred"]) {
-      for (let api of apis) {
-        api[event].addListener(cleanup, filter);
-      }
+      browser.webRequest[event].addListener(cleanup, filter);
+      browser.webNavigation[event].addListener(cleanup);
     }
 
     browser.runtime.onMessage.addListener(({__contentScriptOnce__}, sender)  => {

@@ -65,7 +65,7 @@ var ContentScriptOnce = (() => {
   return {
     async execute(request, options) {
       initOnce();
-      let {tabId, url, requestId} = request;
+      let {tabId, frameId, url, requestId} = request;
       let scripts = requestMap.get(requestId);
       if (!scripts) requestMap.set(requestId, scripts = new Set());
       let match = url;

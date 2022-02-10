@@ -61,6 +61,7 @@ if ("MediaSource" in window) {
         debug("mediaBlocker set via CSP listener.")
         mediaBlocker = true;
         e.stopImmediatePropagation();
+        mozPatch();
         return;
       }
       if (blockedURI.startsWith("blob") &&
@@ -70,15 +71,19 @@ if ("MediaSource" in window) {
       }
     }, true);
   }
-
+  let mozPatch;
   if (typeof exportFunction === "function") {
     // Fallback: Mozilla does not seem to trigger CSP media-src http: for blob: URIs assigned in MSE
     window.wrappedJSObject.document.createElement("video").src = "data:"; // triggers early mediaBlocker initialization via CSP
     ns.on("capabilities", e => {
       mediaBlocker = !ns.allows("media");
-      if (mediaBlocker) debug("mediaBlocker set via fetched policy.")
+      if (mediaBlocker) {
+        debug("mediaBlocker set via fetched policy.");
+        mozPatch();
+      }
     });
-    patchWindow((win, {xray})=> {
+    mozPatch = () => patchWindow((win, {xray})=> {
+      mozPatch = () => {};
       let unpatched = new Map();
       function patch(obj, methodName, replacement) {
         let methods = unpatched.get(obj) || {};
@@ -125,5 +130,7 @@ if ("MediaSource" in window) {
         return unpatched.get(MediaSourceProto).addSourceBuffer.call(ms, mime, ...args);
       });
     });
+  } else {
+    mozPatch = () => {};
   }
 }

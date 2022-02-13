@@ -64,7 +64,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     // make disable property temporarily readonly if tagged as keepDisabled
     for (let p of [ssProto, win.HTMLStyleElement.prototype, win.HTMLLinkElement.prototype]) {
       let prop = "media";
-      let des = Object.getOwnPropertyDescriptor(p, prop);
+      let des = xray.getSafeDescriptor(p, prop, "get");
       exportFunction(function(value) {
         if (postMessage("isDisabled", this)) {
           if (this instanceof StyleSheet) {

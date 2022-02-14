@@ -87,7 +87,7 @@ var Permissions = (() => {
 
   }
 
-  Permissions.ALL = ["script", "object", "media", "frame", "font", "webgl", "fetch", "ping", "noscript", "unchecked_css", "other"];
+  Permissions.ALL = ["script", "object", "media", "frame", "font", "webgl", "fetch", "ping", "noscript", "unchecked_css", "lan", "other"];
   Permissions.IMMUTABLE = {
     UNTRUSTED: {
       "script": false,

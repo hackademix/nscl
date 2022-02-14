@@ -39,7 +39,7 @@ var iputil = {
       return iputil.isLocalIP(host);
     }
 
-    if (all && DNS.cache.isExt(host) || dontResolve) return false;
+    if (!DNS.supported || all && DNS.cache.isExt(host) || dontResolve) return false;
 
     var res = await DNS.resolve(host);
     if (res.addresses) {

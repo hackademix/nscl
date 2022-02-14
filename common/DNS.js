@@ -19,7 +19,7 @@
  */
 
 var DNS = {
-
+  supported: !!browser.dns,
   cache: {
     _: new Map(),
     _ext: new Set(),

@@ -62,7 +62,7 @@ AddressMatcherWithDNS.prototype = {
 
   _asyncNetworkTest: async function(uri, canDoDNS, allIPs) {
     var res = this.rx && this.rx.test(uri);
-    if (res || !canDoDNS) return res;
+    if (res || !canDoDNS || !DNS.supported) return res;
 
     try {
       var host = new URL(uri).hostname;

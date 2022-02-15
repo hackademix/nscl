@@ -74,7 +74,7 @@
           return CANCEL; // otherwise, bail
         }
         // CHROME from now on
-        let documentUrl = params.get("url");
+        let documentUrl = request.initiator || params.get("url");
         let {frameAncestors, frameId} = request;
         let isTop = frameId === 0 || !!params.get("top");
         let tabUrl = frameAncestors && frameAncestors.length

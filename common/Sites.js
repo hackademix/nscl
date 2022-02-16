@@ -81,6 +81,7 @@ var Sites = (() => {
       let url, siteKey = "";
       if (site instanceof URL) {
         url = site;
+        site = site.href;
       } else {
         try {
           url = new URL(site);

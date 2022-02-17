@@ -173,7 +173,7 @@
           }
         }
       }
-      browser.runtime.onSyncMessage = {
+      browser.runtime.onSyncMessage = Object.freeze({
         ENDPOINT_PREFIX,
         addListener(l) {
           listeners.add(l);
@@ -203,8 +203,11 @@
         },
         hasListener(l) {
           return listeners.has(l);
+        },
+        isMessageRequest(request) {
+          return request.type === "xmlhttprequest" && request.url.startsWith(ENDPOINT_PREFIX);
         }
-      };
+      });
     }
   } else if (typeof browser.runtime.sendSyncMessage !== "function") {
     // Content Script side

@@ -21,7 +21,7 @@
 var iputil = {
   localExtras: null,
 
-  isLocalURI: async function(uri, all) {
+  isLocalURI: function(uri, all = false, neverResolve = false) {
     var host;
     try {
       host = new URL(uri).hostname;
@@ -29,30 +29,31 @@ var iputil = {
       return false;
     }
     if (!host) return true; // local file:///
-    return await iputil.isLocalHost(host, all);
+    return iputil.isLocalHost(host, all, neverResolve);
   },
 
   _localDomainRx: /\.local$/i,
-  isLocalHost: async function(host, all, dontResolve) {
+  isLocalHost: function(host, all = false, neverResolve = false) {
     if (host === "localhost" || iputil._localDomainRx.test(host)) return true;
     if (iputil.isIP(host)) {
       return iputil.isLocalIP(host);
     }
 
-    if (!DNS.supported || all && DNS.cache.isExt(host) || dontResolve) return false;
+    if (!DNS.supported || all && DNS.cache.isExt(host) || neverResolve) return false;
 
-    var res = await DNS.resolve(host);
-    if (res.addresses) {
-      let ret = res.addresses[all ? 'every' : 'some'](iputil.isLocalIP);
-      if (!ret) DNS.cache.setExt(host, true);
-      return ret;
-    }
-    else {
-      // I'm not sure if this can happen,
-      // but MDN says DNSRecord objects "may" contain the properties (not "does" or "will") ...
-      console.log(`No DNS addresses for '${host}' ?`, res);
-      return false;
-    }
+    return DNS.resolve(host).then(res => {
+      if (res.addresses) {
+        let ret = res.addresses[all ? 'every' : 'some'](iputil.isLocalIP);
+        if (!ret) DNS.cache.setExt(host, true);
+        return ret;
+      }
+      else {
+        // I'm not sure if this can happen,
+        // but MDN says DNSRecord objects "may" contain the properties (not "does" or "will") ...
+        console.log(`No DNS addresses for '${host}' ?`, res);
+        return false;
+      }
+    });
   },
 
   _localIP6Rx: /^(?:::1?$|f(?:[cd]|e[c-f])[0-9a-f]*:)/i,

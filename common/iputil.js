@@ -53,6 +53,11 @@ var iputil = {
         console.log(`No DNS addresses for '${host}' ?`, res);
         return false;
       }
+    }, e => {
+      if (e.message !== "NS_ERROR_UNKNOWN_PROXY_HOST") {
+        console.error(e, host);
+      }
+      return false;
     });
   },
 

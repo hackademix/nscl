@@ -20,18 +20,22 @@
 
 var PlaceHolder = (() => {
   const HANDLERS = new Map();
-  const CLASS_NAME = "__NoScript_PlaceHolder__";
-  const SELECTOR = `a.${CLASS_NAME}`;
+  const CLASS_NAME = "__NoScript_PlaceHolder__ __NoScript_Theme__";
+  const SELECTOR = `a.${CLASS_NAME.split(/\s+/).join('.')}`;
   let checkStyle = async () => {
     checkStyle = () => {};
     if (!ns.embeddingDocument) return;
     let replacement = document.querySelector(SELECTOR);
     if (!replacement) return;
     if (window.getComputedStyle(replacement, null).opacity !== "0.8") {
-      document.head.appendChild(createHTMLElement("style")).textContent = await
-        (await fetch(browser.runtime.getURL("/content/content.css"))).text();
+      let sheets = ["/common/common.css", "/content/content.css"];
+      document.head.appendChild(createHTMLElement("style")).textContent =
+        ["/common/common.css", "/content/content.css"]
+          .map(async sheet => await (await fetch(browser.runtime.getURL(sheet))).text())
+          .join("\n");
     }
-  }
+  };
+
 
   class Handler {
     constructor(type, selector) {

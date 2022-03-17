@@ -38,9 +38,7 @@ if (typeof flextabs === "function") {
     for (let toggle of toggles) {
       toggle.addEventListener("click", e => {
         let currentIdx = toggles.indexOf(toggle);
-        try {
-          localStorage.setItem(storageKey, currentIdx);
-        } catch (e) {}
+        if (localStorage) localStorage.setItem(storageKey, currentIdx);
         location.hash = location.hash.split(";").filter(p => !rx.test(p))
           .concat(`tab-${id}=${currentIdx}`).join(";");
       });

@@ -12,18 +12,26 @@ SPDX-License-Identifier: GPL-3.0-or-later
 *designed to for* ***cross-browser*** *development / maintenance* <br>
 *of privacy / security extensions.*
 
+<br>
+
 ---
 
  **⸢ [Issues] ⸥ ⸢ [General Discussions] ⸥**
 
 ---
 
+<br>
+
 ## Integration
 
 - Add this repository as a **[Git Submodule]**
 - Integrate the [`include.sh`][Include] script into your build workflow
 
+<br>
+
 ---
+
+<br>
 
 ## Why
 
@@ -34,7 +42,11 @@ the limited tool-set that remains.
 
 This library tries to alleviate some of these problems.
 
+<br>
+
 ---
+
+<br>
 
 ## Mobile
 
@@ -42,7 +54,11 @@ This library is also useful in the aspect of porting / maintaining extension <br
 for mobile browser, such as the `Fenix` Android browser, considering that <br>
 often only a small subset of the desktop **APIs** are supported.
 
+<br>
+
 ---
+
+<br>
 
 ## Details
 

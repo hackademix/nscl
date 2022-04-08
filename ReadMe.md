@@ -23,3 +23,10 @@ To start using the NSCL, just add this repository as a git [submodule](https://g
 Please use the [issue tracker](https://github.com/hackademix/nscl/issues) here for bug reports and RFEs, and [this forum](https://forums.informaction.com/viewforum.php?f=27) for general discussion.
 
 ![NoScript Commons Library](https://raw.githubusercontent.com/hackademix/nscl/main/nscl-logo.png)
+
+#### Security reports
+
+We strive to fix security sensitive issues in the shortest time possible (hours, ideally) while protecting users.
+If you've find one, please report privately at [security@noscript.net](mailto:security@noscript.net).
+To ensure confidentiality and protect users, please encrypt your report with this __PGP key__:
+3359 0391 70A3 CD9B 25CF 5A46 231A 83AF DA9C 2434.

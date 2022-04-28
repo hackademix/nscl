@@ -15,7 +15,8 @@ if [[ -z "$TARGET" ]];then
   exit 1
 fi
 TARGET="$(realpath "$TARGET")"
-SRC="$(realpath "$(dirname "$(dirname "$0")")")"
+BASE="$(dirname "$0")"
+SRC="$(realpath "$(dirname "$BASE")")"
 
 if ! [[ -d "$TARGET" ]]; then
   echo 1>&2 "Target directory '$TARGET' not found!"
@@ -47,4 +48,11 @@ filter_inclusions() {
 filter_inclusions "$TARGET" manifest.json
 # include also references from nscl scripts already included
 [[ -d "$TARGET/nscl" ]] && filter_inclusions "$TARGET/nscl/"
+
+# auto-update TLDs if included
+TLDJS="$TARGET/nscl/common/tld.js"
+if [[ -f "$TLDJS" ]] && node "$BASE/TLD/update.js" "$TLDJS"; then
+  echo "Updated TLDs"
+fi
+
 exit 0

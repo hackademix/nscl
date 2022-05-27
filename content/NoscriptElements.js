@@ -40,6 +40,10 @@ var NoscriptElements = {
       if (noscript.closest("head") && document.body) {
         document.body.insertBefore(noscript, document.body.firstChild);
       }
+      // copy attributes
+      for (let {name, value, namespaceURI} of noscript.attributes) {
+        replacement.setAttributeNS(namespaceURI, name, value);
+      }
       noscript.replaceWith(replacement);
     }
 

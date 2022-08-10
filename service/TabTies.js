@@ -65,8 +65,8 @@ var TabTies = (() => {
   });
 
 
-  browser.tabs.onCreated.addListener(({tabId, openerTabId}) => {
-    tie(tabId, openerTabId);
+  browser.tabs.onCreated.addListener(({id, openerTabId}) => {
+    tie(id, openerTabId);
   });
 
   browser.tabs.onRemoved.addListener(tabId => {

@@ -22,17 +22,11 @@ var TabTies = (() => {
 
   const map = new Map([[-1, new Set()]]);
 
-  const ties =  {
-    get(tabId) {
-      return map.get(tabId) || map.set(tabId, new Set()).get(tabId);
-    }
-  };
-
-  function tie(tab1Id, tab2Id) {
-    if (!(tab2Id > -1 && tab1Id > -1)) return;
-    ties.get(tab1Id).add(tab2Id);
-    ties.get(tab2Id).add(tab1Id);
-    debug("[TabTies] Tied", tab1Id, tab2Id, map);
+  function tie(tabId1, tabId2) {
+    if (!(tabId1 > -1 && tabId2 > -1 && tabId1 !== tabId2)) return;
+    ties.get(tabId1).add(tabId2);
+    ties.get(tabId2).add(tabId1);
+    debug("[TabTies] Tied", tabId1, tabId2, map);
   }
 
   function cut(tabId) {
@@ -45,12 +39,20 @@ var TabTies = (() => {
     debug("[TabTies] Cut", tabId, map);
   }
 
+  const ties =  {
+    get(tabId) {
+      return map.get(tabId) || map.set(tabId, new Set()).get(tabId);
+    },
+    cut
+  };
+
+
   browser.webNavigation.onCreatedNavigationTarget.addListener(({sourceTabId, tabId})  => {
     tie(sourceTabId, tabId);
   });
 
   browser.webNavigation.onCommitted.addListener(details  => {
-    debug("webNavigation.onCommited", details);
+    debug("[TabTies] webNavigation.onCommited", details);
     let {tabId, frameId, transitionType, transitionQualifiers} = details;
     if (frameId !== 0) return;
     if (transitionType == "link" || transitionType === "form_submit") return;

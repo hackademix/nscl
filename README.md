@@ -8,7 +8,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 <div align = center>
 
-[![Badge License]][License]
+[![Badge License]][License]   
+[![Badge Release]][Releases]
 
 <br>
 <br>
@@ -119,6 +120,7 @@ please encrypt your report with this **PGP key**.
 [Git Submodule]: https://git-scm.com/book/en/v2/Git-Tools-Submodules
 [Manifest V3]: https://developer.chrome.com/extensions/migrating_to_manifest_v3
 [NoScripts]: https://github.com/hackademix/noscript
+[Releases]: https://github.com/hackademix/nscl/releases
 [Issues]: https://github.com/hackademix/nscl/issues
 [Forum]: https://forums.informaction.com/viewforum.php?f=27
 
@@ -128,6 +130,7 @@ please encrypt your report with this **PGP key**.
 
 <!----------------------------------[ Badges ]--------------------------------->
 
+[Badge Release]: https://img.shields.io/github/v/tag/hackademix/nscl?include_prereleases&style=for-the-badge&labelColor=569A31&color=407225&logoColor=white&logo=GitLFS&label=Release
 [Badge License]: https://img.shields.io/badge/License-GPL3-015d93.svg?style=for-the-badge&labelColor=blue
 
 

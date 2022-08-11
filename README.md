@@ -35,9 +35,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 ## Integration
 
-1\. Add this repository as a **[Git Submodule]**
-
-2\. Add the  [`include.sh`]  script into your build workflow
+Add this repository as a **[Git Submodule]** and integrate <br>
+the  [`include.sh`]  script into your build workflow.
 
 <br>
 <br>
@@ -57,8 +56,8 @@ the limited tool-set that remains.
 ## Mobile
 
 This library is also useful in the aspect of porting / maintaining extension <br>
-for mobile browser, such as the `Fenix` Android browser, considering that <br>
-often only a small subset of the desktop **APIs** are supported.
+for mobile browser, such as the  `Fenix`  Android browser, considering <br>
+that often only a small subset of the desktop **APIs** are supported.
 
 <br>
 <br>

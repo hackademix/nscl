@@ -55,8 +55,11 @@ var TabTies = (() => {
     debug("[TabTies] webNavigation.onCommited", details);
     let {tabId, frameId, transitionType, transitionQualifiers} = details;
     if (frameId !== 0) return;
-    if (transitionType == "link" || transitionType === "form_submit") return;
-    if (transitionQualifiers.some(tq => tq.endsWith("_redirect"))) return;
+    if (/^(?:link|form_submit|reload)$/.test(transitionType) ||
+        transitionQualifiers.some(tq => tq.endsWith("_redirect"))) {
+        // don't cut now, clients will check for user interaction in webRequest
+      return;
+    }
     cut(tabId);
     browser.tabs.executeScript({
       runAt: "document_start",

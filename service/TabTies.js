@@ -22,26 +22,37 @@ var TabTies = (() => {
 
   const map = new Map([[-1, new Set()]]);
 
+
   function tie(tabId1, tabId2) {
     if (!(tabId1 > -1 && tabId2 > -1 && tabId1 !== tabId2)) return;
-    ties.get(tabId1).add(tabId2);
-    ties.get(tabId2).add(tabId1);
+
+    // let's merge all the existing ties of each tab
+    let allTies = new Set([...getTiesWithSelf(tabId1)]
+      .concat([...getTiesWithSelf(tabId2)]));
+
+    for (let tid of allTies) map.set(tid, allTies);
+
     debug("[TabTies] Tied", tabId1, tabId2, map);
   }
 
   function cut(tabId) {
     if (!(tabId > -1)) return;
-    let deadTies = ties.get(tabId);
-    for (let id of deadTies) {
-      ties.get(id).delete(tabId);
-    }
+    let allTies = getTiesWithSelf(tabId);
     map.delete(tabId);
+    allTies.delete(tabId);
     debug("[TabTies] Cut", tabId, map);
+  }
+
+  function getTiesWithSelf(tabId) {
+    let ties = map.get(tabId);
+    return ties || map.set(tabId, ties = new Set([tabId])) && ties;
   }
 
   const ties =  {
     get(tabId) {
-      return map.get(tabId) || map.set(tabId, new Set()).get(tabId);
+      let ties = new Set(getTiesWithSelf(tabId));
+      ties.delete(tabId);
+      return ties;
     },
     cut
   };

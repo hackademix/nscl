@@ -28,11 +28,15 @@ var PlaceHolder = (() => {
     let replacement = document.querySelector(SELECTOR);
     if (!replacement) return;
     if (window.getComputedStyle(replacement, null).opacity !== "0.8") {
-      let sheets = ["/common/common.css", "/content/content.css"];
-      document.head.appendChild(createHTMLElement("style")).textContent =
-        ["/common/common.css", "/content/content.css"]
-          .map(async sheet => await (await fetch(browser.runtime.getURL(sheet))).text())
-          .join("\n");
+      const sheets = ["/common/themes.css", "/content/content.css"];
+      const rules = [];
+      await Promise.all(sheets.map(async url => {
+        console.log("Fetching CSS ", url)
+        rules.push(await (await fetch(browser.runtime.getURL(url))).text());
+        console.log("Done CSS", rules);
+      }));
+      console.log("Fetched CSS Rules", rules);
+      document.head.appendChild(createHTMLElement("style")).textContent = rules.join("\n");
     }
   };
 

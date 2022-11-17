@@ -22,18 +22,41 @@ var PlaceHolder = (() => {
   const HANDLERS = new Map();
   const CLASS_NAME = "__NoScript_PlaceHolder__ __NoScript_Theme__";
   const SELECTOR = `a.${CLASS_NAME.split(/\s+/).join('.')}`;
-  let checkStyle = async () => {
+
+  let checkStyle = () => {
     checkStyle = () => {};
     if (!ns.embeddingDocument) return;
     let replacement = document.querySelector(SELECTOR);
     if (!replacement) return;
     if (window.getComputedStyle(replacement, null).opacity !== "0.8") {
-      const sheets = ["/common/themes.css", "/content/content.css"];
-      await Promise.all(sheets.map(async (url, index) => {
-        sheets[index] = (await (await fetch(browser.runtime.getURL(url))).text());
-      }));
-      document.head.appendChild(createHTMLElement("style")).textContent = sheets.join("\n");
+      for (let url of ["/common/themes.css", "/content/content.css"]) {
+        let l = createHTMLElement("link");
+        l.href = browser.runtime.getURL(url);
+        l.rel = "stylesheet";
+        l.type = "text/css";
+        document.head.appendChild(l);
+      }
     }
+  };
+
+  var theme;
+  let updateTheme = replacement => {
+    if (theme === undefined) {
+      replacement.style.backgroundImage = "none";
+      (async () => {
+        try {
+          theme = await Messages.send("getTheme");
+        } catch (e) {
+          theme = "";
+        }
+        updateTheme(replacement);
+      })();
+      return;
+    }
+    if (theme) {
+      replacement.classList.add(theme);
+    }
+    replacement.style.backgroundImage = "";
   };
 
 
@@ -190,6 +213,8 @@ var PlaceHolder = (() => {
       for (let e of replacement.querySelectorAll("*")) {
         e._placeHolderReplacement = replacement;
       }
+
+      updateTheme(replacement);
 
       element.replaceWith(replacement);
 

@@ -36,19 +36,22 @@ var PlaceHolder = (() => {
         l.type = "text/css";
         document.head.appendChild(l);
       }
+
     }
   };
 
   var theme;
+  var chromiumBgStyle;
   let updateTheme = replacement => {
+    let {style} = replacement;
     if (theme === undefined) {
-      replacement.style.backgroundImage = "none";
       (async () => {
         try {
           theme = await Messages.send("getTheme");
         } catch (e) {
           theme = "";
         }
+        style.backgroundImage = "";
         updateTheme(replacement);
       })();
       return;
@@ -56,7 +59,24 @@ var PlaceHolder = (() => {
     if (theme) {
       replacement.classList.add(theme);
     }
-    replacement.style.backgroundImage = "";
+    if (UA.isMozilla) {
+      replacement.classList.add("mozilla");
+    } else {
+      // Chromium doesn't resolve CSS URIs relative to the extension, but to the site.
+      // Let's fetch the bg image as a data URI and apply it in a <style> element.
+      if (!chromiumBgStyle) {
+        chromiumBgStyle = createHTMLElement("style");
+        const img = getComputedStyle(replacement).getPropertyValue("--img-logo");
+        if (img) {
+          (async () => {
+            const url = img.replace(/\\/g, '').replace(/.*(\/img\/[^'")]+).*/, "$1");
+            chromiumBgStyle.textContent =
+            `${SELECTOR} { background-image: url(${await Messages.send("fetchResource", {url})}) !important }`;
+            document.head.appendChild(chromiumBgStyle);
+          })();
+        }
+      }
+    }
   };
 
 

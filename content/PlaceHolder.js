@@ -29,14 +29,10 @@ var PlaceHolder = (() => {
     if (!replacement) return;
     if (window.getComputedStyle(replacement, null).opacity !== "0.8") {
       const sheets = ["/common/themes.css", "/content/content.css"];
-      const rules = [];
-      await Promise.all(sheets.map(async url => {
-        console.log("Fetching CSS ", url)
-        rules.push(await (await fetch(browser.runtime.getURL(url))).text());
-        console.log("Done CSS", rules);
+      await Promise.all(sheets.map(async (url, index) => {
+        sheets[index] = (await (await fetch(browser.runtime.getURL(url))).text());
       }));
-      console.log("Fetched CSS Rules", rules);
-      document.head.appendChild(createHTMLElement("style")).textContent = rules.join("\n");
+      document.head.appendChild(createHTMLElement("style")).textContent = sheets.join("\n");
     }
   };
 

@@ -95,15 +95,15 @@ var Storage = (() => {
           for (let k of Object.keys(keys)) {
             let s = JSON.stringify(keys[k]);
             let chunksCountKey = chunksKey(k);
-            let oldCount = await browser.storage.sync.get(chunksCountKey)[chunksCountKey] || 0;
+            let oldCount = (await browser.storage.sync.get(chunksCountKey))[chunksCountKey] || 0;
             let count;
             if (s.length > MAX_ITEM_SIZE) {
               count = Math.ceil(s.length / MAX_ITEM_SIZE);
               let chunks = {
                 [chunksCountKey]: count
               };
-              for(let j = 0, o = 0; j < count; ++j, o += MAX_ITEM_SIZE) {
-                chunks[`${k}/${j}`] = s.substr(o, MAX_ITEM_SIZE);
+              for(let j = 0, offset = 0; j < count; ++j) {
+                chunks[`${k}/${j}`] = s.substring(offset, offset += MAX_ITEM_SIZE);
               }
               await browser.storage.sync.set(chunks);
               keys[k] = "[CHUNKED]";
@@ -111,10 +111,8 @@ var Storage = (() => {
               count = 0;
               removeKeys.push(chunksCountKey);
             }
-            if (oldCount-- > count) {
-              do {
-                removeKeys.push(`${k}${oldCount}`);
-              } while(oldCount-- > count);
+            while (oldCount-- > count) {
+              removeKeys.push(`${k}/${oldCount}`);
             }
           }
           await browser.storage.sync.remove(removeKeys);

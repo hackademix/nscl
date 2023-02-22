@@ -21,35 +21,109 @@
 "use strict";
 var Storage = (() => {
 
-  let chunksKey = k => `${k}/CHUNKS`;
+  const chunksKey = k => `${k}/CHUNKS`;
+
+  let lazyInitSync = async () => {
+    lazyInitSync = null;
+
+    const SYNC_KEYS = "__ALL_SYNC_KEYS__";
+    let allSyncData;
+    try {
+      allSyncData = await browser.storage.sync.get();
+    } catch (e) {
+      // sync storage is disabled, bail out
+      const syncKeys = (await browser.storage.local.get(SYNC_KEYS))[SYNC_KEYS];
+      if (syncKeys) {
+        const fallbackKeys = await getLocalFallback();
+        await setLocalFallback(new Set([...fallbackKeys].concat(syncKeys)))
+      }
+      return;
+    }
+
+    const chunkedRx = /^([^/]+)\/(\d+|CHUNKS)$/;
+    let keys = Object.keys(allSyncData);
+
+    // sanitize / repair chunked keys
+    const safeKeys = [];
+    const repaired = {};
+
+    for (let k of keys) {
+      if (!k.endsWith("/0")) continue;
+      const [keyName] = k.split("/");
+      if (allSyncData[keyName] !== "[CHUNKED]") {
+        // not flagged as chunked, bail out and doome the remnants
+        continue;
+      }
+      const ccKey = chunksKey(keyName);
+      let count = parseInt(allSyncData[ccKey]);
+      let contiguousKeys = [];
+      const keyPrefix = keyName.concat('/');
+      for (let j = 1;; j++) {
+        contiguousKeys.push(k);
+        if (j >= count) break;
+        k = keyPrefix.concat(j);
+        if (!keys.includes(k)) break;
+      }
+      let actualCount = contiguousKeys.length;
+      if (count === actualCount) continue;
+      // try to repair
+      repaired[ccKey] = actualCount;
+      safeKeys.push(ccKey, ...contiguousKeys);
+    }
+
+    const doomedKeys = keys.filter(k => chunkedRx.test(k) && !safeKeys.includes(k));
+    if (doomedKeys.length) {
+      await browser.storage.sync.remove(doomedKeys);
+    }
+    if (Object.keys(repaired).length) {
+      await browser.storage.sync.set(repaired);
+    }
+
+    {
+      // backup sync data on local to survive on the fly sync disablement
+      const localKeys = Object.keys(await browser.storage.local.get());
+      const syncKeys = keys.filter(k => !chunkedRx.test(k));
+      const backupKeys = syncKeys.filter(k => !localKeys.includes(k));
+      const backupData = await Storage.get("sync", backupKeys);
+      backupData[SYNC_KEYS] = syncKeys;
+      await browser.storage.local.set(backupData);
+    }
+
+
+  };
 
   async function safeOp(op, type, keys) {
     let sync = type === "sync";
-
     try {
       if (sync) {
+
+        if (lazyInitSync) await lazyInitSync();
+
         let remove = op === "remove";
         if (remove || op === "get") {
           keys = [].concat(keys); // don't touch the passed argument
+          if (remove) {
+            // remove local backup
+            await browser.storage.local.remove(keys);
+          }
           let mergeResults = {};
           let localFallback = await getLocalFallback();
           if (localFallback.size) {
             let localKeys = keys.filter(k => localFallback.has(k));
             if (localKeys.length) {
               if (remove) {
-                await browser.storage.local.remove(localKeys);
                 for (let k of localKeys) {
                   localFallback.delete(k);
                 }
                 await setLocalFallback(localFallback);
               } else {
                 mergeResults = await browser.storage.local.get(localKeys);
+                keys = keys.filter(k => !localFallback.has(k));
               }
-              keys = keys.filter(k => !localFallback.has(k));
             }
           }
 
-          if (keys.length) { // we may not have non-fallback keys anymore
+          if (keys.length) { // we may not have non-fallback keys anymore (for get)
             let chunkCounts = Object.entries(await browser.storage.sync.get(
                 keys.map(chunksKey)))
                   .map(([k, count]) => [k.split("/")[0], count]);
@@ -60,9 +134,10 @@ var Storage = (() => {
                 while (count-- > 0) chunkedKeys.push(`${k}/${count}`);
               }
               if (remove) {
-                let doomedKeys = keys
+                const doomedKeys = keys
                   .concat(chunkCounts.map(([k, count]) => chunksKey(k)))
                   .concat(chunkedKeys);
+                // remove all the keys included chunked, if any, from sync storage
                 return await browser.storage.sync.remove(doomedKeys);
               } else {
                 let chunks = await browser.storage.sync.get(chunkedKeys);
@@ -86,6 +161,9 @@ var Storage = (() => {
             Object.assign(mergeResults, await browser.storage.sync[op](keys))
             : mergeResults;
         } else if (op === "set") {
+          // create/update local backup
+          await browser.storage.local.set(keys);
+
           keys = Object.assign({}, keys); // don't touch the passed argument
           const MAX_ITEM_SIZE = 4096;
           // Firefox Sync's max object BYTEs size is 16384, Chrome's 8192.
@@ -134,17 +212,17 @@ var Storage = (() => {
       }
       return ret;
     } catch (e) {
-      error(e, "%s.%s(%o)", type, op, keys);
       if (sync) {
-        debug("Sync disabled? Falling back to local storage (%s %o)", op, keys);
-        let localFallback = await getLocalFallback();
-        let failedKeys = Array.isArray(keys) ? keys
+        debug("Sync disabled? Falling back to local storage", op, keys, e);
+        const localFallback = await getLocalFallback();
+        const failedKeys = Array.isArray(keys) ? keys
           : typeof keys === "string" ? [keys] : Object.keys(keys);
         for (let k of failedKeys) {
           localFallback.add(k);
         }
         await setLocalFallback(localFallback);
       } else {
+        error(e, "%s.%s(%o)", type, op, keys);
         throw e;
       }
     }
@@ -159,6 +237,12 @@ var Storage = (() => {
   async function getLocalFallback() {
     let keys = (await browser.storage.local.get(LFK_NAME))[LFK_NAME];
     return new Set(Array.isArray(keys) ? keys : []);
+  }
+
+  async function isChunked(key) {
+    let ccKey = chunksKey(key);
+    let data = await browser.storage.sync.get([key, ccKey]);
+    return data[key] === "[CHUNKED]" && parseInt(data[ccKey]);
   }
 
   return {
@@ -178,10 +262,6 @@ var Storage = (() => {
       return (await getLocalFallback()).has(key);
     },
 
-    async isChunked(key) {
-      let ccKey = chunksKey(key);
-      let data = await browser.storage.sync.get([key, ccKey]);
-      return data[key] === "[CHUNKED]" && parseInt(data[ccKey]);
-    }
+    isChunked,
   };
 })()

@@ -85,11 +85,14 @@
       async () => eq("bigObject", "tiny", "prop"),
       async  () => {
         await Storage.remove("sync", keys);
-        let myItems = await Storage.get("sync", keys);
-        return Object.keys(myItems).length === 0;
+        await Storage.remove("local", keys);
+        const myKeys = Object.keys(await Storage.get("sync", keys)).concat(Object.keys(await Storage.get("local", keys)));
+        return myKeys.length === 0;
       },
     ]) {
-      await Test.run(t);
+      if (!await Test.run(t)) {
+        error("Storage test failed.\nSync: %o.\nLocal: %o.", await browser.storage.sync.get(), await browser.storage.local.get());
+      }
     }
     Test.report();
   })();

@@ -10,7 +10,7 @@ License: CC0-1.0
 
 # JSON (uncommentable) files
 Files: *.json */*.json
-Copyright: 2020-2021 Giorgio Maone
+Copyright: 2020-2023 Giorgio Maone
 License: GPL-3.0-or-later
 
 # Localization files

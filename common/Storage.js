@@ -51,12 +51,12 @@ var Storage = (() => {
       if (!k.endsWith("/0")) continue;
       const [keyName] = k.split("/");
       if (allSyncData[keyName] !== "[CHUNKED]") {
-        // not flagged as chunked, bail out and doome the remnants
+        // not flagged as chunked, bail out and doom the remnants
         continue;
       }
       const ccKey = chunksKey(keyName);
-      let count = parseInt(allSyncData[ccKey]);
-      let contiguousKeys = [];
+      const count = parseInt(allSyncData[ccKey]);
+      const contiguousKeys = [];
       const keyPrefix = keyName.concat('/');
       for (let j = 1;; j++) {
         contiguousKeys.push(k);
@@ -64,11 +64,12 @@ var Storage = (() => {
         k = keyPrefix.concat(j);
         if (!keys.includes(k)) break;
       }
-      let actualCount = contiguousKeys.length;
-      if (count === actualCount) continue;
-      // try to repair
-      repaired[ccKey] = actualCount;
       safeKeys.push(ccKey, ...contiguousKeys);
+      const actualCount = contiguousKeys.length;
+      if (count !== actualCount) {
+        // try to repair
+        repaired[ccKey] = actualCount;
+      }
     }
 
     const doomedKeys = keys.filter(k => chunkedRx.test(k) && !safeKeys.includes(k));

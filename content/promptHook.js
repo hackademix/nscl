@@ -21,22 +21,24 @@
 // depends on nscl/content/patchWindow.js
 "use strict";
 
-{
+if (patchWindow.xrayEnabled) { // Firefox only
   debug("Prompt Hook installation", document.URL); // DEV_ONLY
   const patchPrompts = (scope, {port, xray}) => {
     for (let methodName of ["alert", "confirm", "prompt"]) {
-      let target = methodName in scope.__proto__ ? scope.__proto__ : scope;
-      const method = xray.getSafeMethod(target, methodName);
-      const handler = cloneInto({
-        apply(targetObject, thisArg, argumentsList) {
+      let target = xray.unwrap(methodName in scope.__proto__ ? scope.__proto__ : scope);
+      let method = xray.getSafeMethod(target, methodName);
+      const patched = function(...args) {
+        try {
+          return method.call(this, ...args);
+        } finally {
           try {
-            return method.call(thisArg, ...argumentsList);
-          } finally {
             port.postMessage("prompt", target);
+          } catch(e) {
+            // dead port object, extension removed?
           }
         }
-      }, scope, {cloneFunctions: true});
-      target[methodName] = new scope.Proxy(method, handler);
+      }
+      exportFunction(patched, scope, {defineAs: methodName});
     }
   };
 

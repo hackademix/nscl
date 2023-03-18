@@ -205,9 +205,29 @@ function patchWindow(patchingCallback, env = {}) {
 
   env.port = new Port("page", "extension");
 
-  function getSafeMethod(obj, method) {
-    return isDeadTarget(obj, method) ? xray.wrap(obj)[method] : obj[method];
-  }
+  const {xrayEnabled} = patchWindow;
+  const zombieDanger = xrayEnabled && document.readyState === "complete";
+  const isZombieException = e => e.message.includes("dead object");
+
+  const getSafeMethod = zombieDanger
+  ? (obj, method) => {
+    let actualTarget = obj[method];
+    return XPCNativeWrapper.unwrap(new window.Proxy(actualTarget, cloneInto({
+      apply(targetFunc, thisArg, args) {
+        try {
+          return actualTarget.apply(thisArg, args);
+        } catch (e) {
+          if (isZombieException(e)) {
+            console.debug(`Zombie hit for "${method}", falling back to native wrapper...`);
+            return (actualTarget = XPCNativeWrapper(obj)[method]).apply(thisArg, args);
+          }
+          throw e;
+        }
+      },
+    }, window, {cloneFunctions: true}
+    )));
+
+  } : (obj, method) => obj[method];
 
   function getSafeDescriptor(proto, prop, accessor) {
     let des = Object.getOwnPropertyDescriptor(proto, prop);
@@ -221,21 +241,22 @@ function patchWindow(patchingCallback, env = {}) {
       getSafeMethod, getSafeDescriptor
     });
 
-  let xray = typeof XPCNativeWrapper === "undefined"
+  let xray = !xrayEnabled
     ? xrayMake(false, o => o)
     : xrayMake(true, o => XPCNativeWrapper(o), o => XPCNativeWrapper.unwrap(o),
       function(obj, win = this.window || window) {
         return cloneInto(obj, win, {cloneFunctions: true, wrapReflectors: true});
       });
 
-  var isDeadTarget = xray.enabled && document.readyState === "complete" ?
+  var isDeadTarget = zombieDanger ?
     (obj, method) => {
       // We may be repatching this already loaded window during an extension update:
       // beware of dead object from killed obsolete content script!
       try {
-        obj[method].apply(null);
+        // this would throw "TypeError: can't access dead object" on proxies with a dead target
+        "" in obj[method] || obj[method].call();
       } catch (e) {
-        return e.message.includes("dead object");
+        return isZombieException(e);
       }
       return false;
     }
@@ -378,7 +399,8 @@ function patchWindow(patchingCallback, env = {}) {
   return port;
 }
 
-if (typeof XPCNativeWrapper !== "undefined") {
+patchWindow.xrayEnabled = typeof XPCNativeWrapper !== "undefined";
+if (patchWindow.xrayEnabled) {
   // make up for object element initialization inconsistencies on Firefox
   let callbacks = new Set();
   patchWindow.onObject = {

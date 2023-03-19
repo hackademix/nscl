@@ -210,7 +210,7 @@ function patchWindow(patchingCallback, env = {}) {
   const isZombieException = e => e.message.includes("dead object");
 
   const getSafeMethod = zombieDanger
-  ? (obj, method) => {
+  ? (obj, method, wrappedObj) => {
     let actualTarget = obj[method];
     return XPCNativeWrapper.unwrap(new window.Proxy(actualTarget, cloneInto({
       apply(targetFunc, thisArg, args) {
@@ -219,21 +219,23 @@ function patchWindow(patchingCallback, env = {}) {
         } catch (e) {
           if (isZombieException(e)) {
             console.debug(`Zombie hit for "${method}", falling back to native wrapper...`);
-            return (actualTarget = XPCNativeWrapper(obj)[method]).apply(thisArg, args);
+            return (actualTarget = (wrappedObj || XPCNativeWrapper(obj))[method]).apply(thisArg, args);
           }
           throw e;
         }
       },
-    }, window, {cloneFunctions: true}
+    }, window, {cloneFunctions: true, wrapReflectors: true}
     )));
 
   } : (obj, method) => obj[method];
 
-  function getSafeDescriptor(proto, prop, accessor) {
-    let des = Object.getOwnPropertyDescriptor(proto, prop);
-    return isDeadTarget(des, accessor) ?
-      Object.getOwnPropertyDescriptor(xray.wrap(proto), prop)
-      : des;
+  const getSafeDescriptor = (proto, prop, accessor) => {
+    const des = Reflect.getOwnPropertyDescriptor(proto, prop);
+    if (zombieDanger) {
+      const wrappedDescriptor =  Reflect.getOwnPropertyDescriptor(xray.wrap(proto), prop);
+      des[accessor] = getSafeMethod(des, accessor, wrappedDescriptor);
+    }
+    return des;
   }
 
   let xrayMake = (enabled, wrap, unwrap = wrap, forPage = wrap) => ({
@@ -247,20 +249,6 @@ function patchWindow(patchingCallback, env = {}) {
       function(obj, win = this.window || window) {
         return cloneInto(obj, win, {cloneFunctions: true, wrapReflectors: true});
       });
-
-  var isDeadTarget = zombieDanger ?
-    (obj, method) => {
-      // We may be repatching this already loaded window during an extension update:
-      // beware of dead object from killed obsolete content script!
-      try {
-        // this would throw "TypeError: can't access dead object" on proxies with a dead target
-        "" in obj[method] || obj[method].call();
-      } catch (e) {
-        return isZombieException(e);
-      }
-      return false;
-    }
-  : () => false;
 
   const patchedWindows = new WeakSet(); // track them to avoid indirect recursion
 
@@ -362,8 +350,8 @@ function patchWindow(patchingCallback, env = {}) {
         }
       }
       let des = getSafeDescriptor(proto, method, accessor);
-      des[accessor] = new Proxy(des[accessor], patchHandler);
-      win.Object.defineProperty(proto, method, xray.forPage(des, win));
+      des[accessor] = exportFunction(new Proxy(des[accessor], patchHandler), proto, {defineAs: `${accessor} ${method}`});;
+      Reflect.defineProperty(xray.unwrap(proto), method, des);
     }
 
     for (let [obj, methods] of Object.entries(domChangers)) {
@@ -392,7 +380,7 @@ function patchWindow(patchingCallback, env = {}) {
     };
 
     descriptor.get = exportFunction(replacements[property], proto, {defineAs: `get ${property}`});
-    Object.defineProperty(proto, property, descriptor);
+    Reflect.defineProperty(proto, property, descriptor);
   }
 
   modifyWindow(window);

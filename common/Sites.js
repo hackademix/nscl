@@ -90,6 +90,9 @@ var Sites = (() => {
         }
       }
       if (url) {
+        if (url.protocol === "blob:") {
+          return {url, siteKey: url.origin};
+        }
         if (Sites.onionSecure && url.protocol === "http:" && url.hostname.endsWith(".onion")) {
           url.protocol = "https:";
         }

@@ -19,6 +19,7 @@
  */
 
 // depends on nscl/content/patchWindow.js
+// depends on nscl/common/Messages.js
 "use strict";
 
 if (patchWindow.xrayEnabled) { // Firefox only
@@ -46,18 +47,6 @@ if (patchWindow.xrayEnabled) { // Firefox only
   port.onMessage = msg => {
     if (msg !== "prompt") return;
     debug("Prompt Hook triggered"); // DEV_ONLY
-    function efs(w) {
-      try {
-        if (w.document.fullscreenElement) {
-          w.document.exitFullscreen();
-        }
-      } catch (e) {
-        debug(e); // DEV_ONLY
-      }
-    }
-    efs(window);
-    for (let j = 0; j in window; j++) {
-      efs(window[j]);
-    }
+    Messages.send("promptHook");
   }
 }

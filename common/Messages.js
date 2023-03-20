@@ -20,7 +20,8 @@
 
 "use strict";
 {
-  let handlers = new Set();
+  const allHandlers = new Set();
+  const namespacedHandlers = new Map();
 
   let dispatch = (msg, sender) => {
     let {__meta, _messageName} = msg;
@@ -35,11 +36,27 @@
     delete msg.__meta;
     delete msg._messageName;
     let {name} = __meta;
+    let handlers = allHandlers;
+    let namespace = "";
+    const dotIdx = name.lastIndexOf(".");
+    if (dotIdx > 0) {
+      namespace = name.substring(0, dotIdx);
+      if (namespacedHandlers.has(namespace)) {
+        handlers = [namespacedHandlers.get(namespace)];
+        name = name.substring(dotIdx + 1);
+        namespace += ".";
+      } else {
+        namespace = "";
+      }
+    }
     let responderFound = false;
     let exception = null;
     for (let h of handlers) {
+      if (typeof h !== "object") {
+        // might be a namespace
+        continue;
+      }
       let f = h[name];
-
       if (typeof f === "function") {
         let result;
         try {
@@ -58,22 +75,28 @@
     }
     if (exception) throw exception;
     if (!responderFound) {
-      debug("Warning: no handler for message %s %s in context %s", name, JSON.stringify(msg), document.URL);
+      debug("Warning: no handler for message %s%s %s in context %s", namespace, name, JSON.stringify(msg), document.URL);
     }
   };
 
   var Messages = {
-    addHandler(handler) {
-      let originalSize = handlers.size;
-      handlers.add(handler);
-      if (originalSize === 0 && handlers.size === 1) {
+    addHandler(handler, impl) {
+      let originalSize = allHandlers.size;
+      allHandlers.add(handler);
+      if (typeof handler === "string") {
+        namespacedHandlers.set(handler, impl || {});
+      }
+      if (originalSize === 0 && allHandlers.size === 1) {
         browser.runtime.onMessage.addListener(dispatch);
       }
     },
     removeHandler(handler) {
-      let originalSize = handlers.size;
-      handlers.delete(handler);
-      if (originalSize === 1 && handlers.size === 0) {
+      let originalSize = allHandlers.size;
+      allHandlers.delete(handler);
+      if (typeof handler === "string") {
+        namespacedHandlers.delete(handler);
+      }
+      if (originalSize === 1 && allHandlers.size === 0) {
         browser.runtime.onMessage.removeListener(dispatch);
       }
     },

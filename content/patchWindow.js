@@ -56,9 +56,6 @@
  */
 
 function patchWindow(patchingCallback, env = {}) {
-  if (typeof patchingCallback !== "function") {
-    patchingCallback = new Function("unwrappedWindow", "env", patchingCallback);
-  }
   let eventId = this && this.eventId || `windowPatchMessages:${uuid()}`;
   let { dispatchEvent, addEventListener } = window;
 
@@ -181,6 +178,13 @@ function patchWindow(patchingCallback, env = {}) {
     let cloneInto = (obj, targetObject) => {
       return obj; // dummy for assignment
     };
+
+    // Ensure patchingCallback will have the correct signature when not provided as a function
+    // without having to re-parse it as a function since we need it as a string anyway
+    if (typeof patchingCallback !== "function") {
+      patchingCallback = `(unwrappedWindow, env) => {${patchingCallback}}`;
+    }
+
     let script = document.createElement("script");
     script.text = `
     (() => {
@@ -201,6 +205,10 @@ function patchWindow(patchingCallback, env = {}) {
     document.documentElement.insertBefore(script, document.documentElement.firstChild);
     script.remove();
     return port;
+  }
+
+  if (typeof patchingCallback !== "function") {
+    patchingCallback = new Function("unwrappedWindow", "env", patchingCallback);
   }
 
   env.port = new Port("page", "extension");

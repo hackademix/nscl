@@ -69,7 +69,10 @@ var DocStartInjection = (() => {
 
     if (repeating) {
       let scriptsBlock = [...scripts].join("\n");
-      let injectionId = `injection:${uuid()}:${sha256(scriptsBlock)}`;
+      const scriptBytes = new TextEncoder().encode(scriptsBlock);
+      const hashBytes = await crypto.subtle.digest("SHA-256", scriptBytes);
+      const hash = new Uint8Array(hashBytes).reduce((s, b) => s + b.toString(16).padStart(2, "0"), "");
+      let injectionId = `injection:${uuid()}:${hash}`;
       let args = {
         code: `(() => {
           let injectionId = ${JSON.stringify(injectionId)};

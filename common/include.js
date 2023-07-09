@@ -47,7 +47,12 @@ var include = (() =>
       let inc = src.endsWith(".css") ? styleLoader(src) : scriptLoader(src);
       inc.onload = () => resolve(inc);
       inc.onerror = () => reject(new Error(`Failed to load ${src}`));
-      document.head.appendChild(inc);
+      try {
+        document.head.appendChild(inc);
+      } catch (e) {
+        error(e, "Fatal failed inclusion, reloading extension.");
+        browser.runtime.reload();
+      }
     });
     _inclusions.set(src, loading);
     return await (loading);

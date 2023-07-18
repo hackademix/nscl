@@ -24,25 +24,28 @@ var DebuggableRegExp = (() => {
 
   return class DebuggableRegExp {
 
-    constructor(rx) {
+    constructor(rx, partsWrapper = null) {
       this.originalRx = rx;
+      this.source = rx.source;
+      this.flags = rx.flags;
       const chunks = rx.source.split("|");
       this._parts = [];
       let curPart = [];
       for (const c of chunks) {
         curPart.push(c);
         try {
-          this._parts.push(new RegExp(curPart.join("|")));
+          this._parts.push(new RegExp(curPart.join("|"), rx.flags));
           curPart = [];
         } catch (e) {
         }
       }
+      if (partsWrapper) this._parts = this._parts.map(partsWrapper);
     }
 
-    test(s) {
+    async test(s) {
       for (let part of this._parts) {
         try {
-          if (part.test(s)) return true;
+          if (await part.test(s)) return true;
         } catch (e) {
           throw new Error(`${e.message}\ntesting RegExp:\n${part}\non string:\n${s}`);
         }

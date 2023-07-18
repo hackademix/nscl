@@ -45,12 +45,16 @@ var DebuggableRegExp = (() => {
     async test(s) {
       for (let part of this._parts) {
         try {
-          if (await part.test(s)) return true;
+          if (await ("asyncTest" in part ? part.asyncTest(s) : part.test(s))) return true;
         } catch (e) {
-          throw new Error(`${e.message}\ntesting RegExp:\n${part}\non string:\n${s}`);
+          throw new Error(`${e.message}\ntesting RegExp:\n${part}\non string:\n${s}\n${e.stack}`);
         }
       }
       return false;
+    }
+
+    async asyncTest(s) {
+      return await (this.asyncTest = this.test).call(this, s);
     }
   };
 

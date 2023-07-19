@@ -98,6 +98,8 @@ var AsyncRegExp = (() => {
       const worker = workers.get(workerId);
       if (!worker) return;
       workers.delete(workerId);
+      while (!workers.has(workerLastId--) && workerLastId > -1);
+      ++workerLastId;
       worker.postMessage(data);
       return;
     }
@@ -109,6 +111,8 @@ var AsyncRegExp = (() => {
     const {resolve, reject} = resolver;
     if (resolve) {
       rxResolvers.delete(asyncRegExpId);
+      while(!rxResolvers.has(rxLastId--) && rxLastId > -1);
+      ++rxLastId;
       if (error) {
         reject(error);
       } else {

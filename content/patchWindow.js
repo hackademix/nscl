@@ -291,6 +291,7 @@ function patchWindow(patchingCallback, env = {}) {
     }
     // auto-trigger window patching whenever new elements are added to the DOM
     let patchAll = () => {
+      const win = xray.unwrap(window);
       for (let j = 0; j in win; j++) {
         try {
           modifyWindow(win[j]);

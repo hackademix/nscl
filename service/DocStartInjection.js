@@ -215,7 +215,7 @@ var DocStartInjection = (() => {
     },
     unregister(scriptBuilder) {
       scriptBuilders.delete(scriptBuilder);
-      if (scriptBuilders.size() === 0) listen(false);
+      if (scriptBuilders.size === 0) listen(false);
     }
   };
 })();

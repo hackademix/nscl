@@ -18,29 +18,10 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-"use strict";
-try {
-  let BASE = "";
-  self.include = src => Array.isArray(src) ? importScripts(...src) : importScripts(src);
-
-  let includeFrom = (dir, srcs) =>  include(srcs.map(name => `${BASE}/${dir}/${name}.js`));
-
-  includeFrom("lib", [
-    "browser-polyfill", "punycode",
-  ]);
-
-  includeFrom("common", [
-    "UA", "uuid", "log", "locale",
-    "tld", "Messages",
-    "CSP", "CapsCSP", "NetCSP",
-    "RequestKey", "Sites", "Permissions", "Policy",
-    "Storage",
-    "sha256",
-  ]);
-
-  includeFrom("service", [
-    "TabCache"
-  ]);
-} catch (e) {
-  console.error(e);
+async function sha256(s) {
+  const bytes = new TextEncoder().encode(s);
+  const hashBytes = await crypto.subtle.digest("SHA-256", bytes);
+  return new Uint8Array(hashBytes).reduce(
+  (s, b) => s + b.toString(16).padStart(2, "0"), ""
+ );
 }

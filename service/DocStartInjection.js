@@ -18,7 +18,7 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// depends on /nscl/lib/sha256.js
+// depends on /nscl/common/sha256.js
 // depends on /nscl/common/uuid.js
 
 "use strict";
@@ -69,7 +69,7 @@ var DocStartInjection = (() => {
 
     if (repeating) {
       let scriptsBlock = [...scripts].join("\n");
-      let injectionId = `injection:${uuid()}:${sha256(scriptsBlock)}`;
+      let injectionId = `injection:${uuid()}:${await sha256(scriptsBlock)}`;
       let args = {
         code: `(() => {
           let injectionId = ${JSON.stringify(injectionId)};

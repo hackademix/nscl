@@ -18,10 +18,10 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-async function sha256(s) {
-  const bytes = new TextEncoder().encode(s);
+async function sha256(aString) {
+  const bytes = new TextEncoder().encode(aString);
   const hashBytes = await crypto.subtle.digest("SHA-256", bytes);
   return new Uint8Array(hashBytes).reduce(
-  (s, b) => s + b.toString(16).padStart(2, "0"), ""
- );
+    (s, b) => s + b.toString(16).padStart(2, "0"), ""
+  );
 }

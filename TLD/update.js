@@ -21,6 +21,7 @@
 "use strict";
 
 var fs = require('fs');
+var path = require('path');
 var https = require('https');
 var punycode = require('punycode');
 
@@ -29,15 +30,26 @@ const TLD_CACHE = "public_suffix_list.dat";
 const TLD_URL = `https://publicsuffix.org/list/${TLD_CACHE}`;
 const TLD_OUT = args[0] || "../common/tld.js";
 
+var offline_tld_dat = process.env.NSCL_TLD_DAT ? path.resolve(process.env.NSCL_TLD_DAT) : null;
+
+process.chdir(__dirname);
+
 let ts = Date.now();
 
-https.get(TLD_URL, res => {
-  res.pipe(fs.createWriteStream(TLD_CACHE));
-  res.on("end", function() {
-    console.log(`${TLD_URL} retrieved in ${Date.now() - ts}ms.`);
-    parse();
+if (offline_tld_dat) {
+  console.log(`Updating tld.js from ${offline_tld_dat} ...`);
+  fs.copyFileSync(offline_tld_dat, TLD_CACHE, fs.constants.COPYFILE_EXCL);
+  parse();
+}
+else {
+  https.get(TLD_URL, res => {
+    res.pipe(fs.createWriteStream(TLD_CACHE));
+    res.on("end", function() {
+      console.log(`${TLD_URL} retrieved in ${Date.now() - ts}ms.`);
+      parse();
+    });
   });
-});
+}
 
 function parse() {
   let section;

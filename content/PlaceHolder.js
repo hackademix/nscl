@@ -23,27 +23,8 @@ var PlaceHolder = (() => {
   const CLASS_NAME = "__NoScript_PlaceHolder__ __NoScript_Theme__";
   const SELECTOR = `a.${CLASS_NAME.split(/\s+/).join('.')}`;
 
-  let checkStyle = () => {
-    checkStyle = () => {};
-    if (!ns.embeddingDocument) return;
-    let replacement = document.querySelector(SELECTOR);
-    if (!replacement) return;
-    if (window.getComputedStyle(replacement, null).opacity !== "0.8") {
-      for (let url of ["/common/themes.css", "/content/content.css"]) {
-        let l = createHTMLElement("link");
-        l.href = browser.runtime.getURL(url);
-        l.rel = "stylesheet";
-        l.type = "text/css";
-        document.head.appendChild(l);
-      }
-
-    }
-  };
-
   var theme;
-  var chromiumBgStyle;
   let updateTheme = replacement => {
-    let {style} = replacement;
     if (theme === undefined) {
       (async () => {
         try {
@@ -51,34 +32,21 @@ var PlaceHolder = (() => {
         } catch (e) {
           theme = "";
         }
-        style.backgroundImage = "";
         updateTheme(replacement);
       })();
       return;
     }
-    if (theme) {
+    if (replacement && theme) {
       replacement.classList.add(theme);
     }
-    if (UA.isMozilla) {
-      replacement.classList.add("mozilla");
-    } else {
-      // Chromium doesn't resolve CSS URIs relative to the extension, but to the site.
-      // Let's fetch the bg image as a data URI and apply it in a <style> element.
-      if (!chromiumBgStyle) {
-        chromiumBgStyle = createHTMLElement("style");
-        const img = getComputedStyle(replacement).getPropertyValue("--img-logo");
-        if (img) {
-          (async () => {
-            const url = img.replace(/\\/g, '').replace(/.*(\/img\/[^'")]+).*/, "$1");
-            chromiumBgStyle.textContent =
-            `${SELECTOR} { background-image: url(${await Messages.send("fetchResource", {url})}) !important }`;
-            document.head.appendChild(chromiumBgStyle);
-          })();
-        }
-      }
-    }
+    return;
   };
 
+  if (document.querySelector(SELECTOR)) {
+    // Bootstrap remote CSS on extension updates if the content script is injected in a page
+    // already contains placeholders, e.g. on extension updates
+    updateTheme();
+  }
 
   class Handler {
     constructor(type, selector) {
@@ -185,7 +153,6 @@ var PlaceHolder = (() => {
       };
       if (this.replacements.size) {
         PlaceHolder.listen();
-        checkStyle();
       }
     }
 
@@ -208,7 +175,8 @@ var PlaceHolder = (() => {
       let replacement = createHTMLElement("a");
       replacement.className = CLASS_NAME;
       cloneStyle(element, replacement);
-       if (ns.embeddingDocument) {
+      replacement.style.visibility = "hidden"; // ensure we don't flash on delayed CSS
+      if (ns.embeddingDocument) {
         replacement.classList.add("__ns__document");
         window.stop();
       }

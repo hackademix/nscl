@@ -45,7 +45,7 @@ var NavCache = (() => {
   });
 
   browser.tabs.onRemoved.addListener(tabId => {
-    tabs.delete(tabId);
+    delete tabs[tabId];
   });
 
 

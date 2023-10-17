@@ -53,7 +53,7 @@ filter_inclusions "$TARGET" manifest.json
 TLDJS="$TARGET/nscl/common/tld.js"
 if [[ -f "$TLDJS" ]] && node "$BASE/TLD/update.js" "$TLDJS"; then
   echo "Updated TLDs"
-  cp -f "$TLDJS" "$BASE/TLD/"
+  cp -f "$TLDJS" "$BASE/common/"
 fi
 
 exit 0

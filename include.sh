@@ -50,10 +50,16 @@ filter_inclusions "$TARGET" manifest.json
 [[ -d "$TARGET/nscl" ]] && filter_inclusions "$TARGET/nscl/"
 
 # auto-update TLDs if included
-TLDJS="$TARGET/nscl/common/tld.js"
-if [[ -f "$TLDJS" ]] && node "$BASE/TLD/update.js" "$TLDJS"; then
+REL_JS_PATH="common/tld.js"
+TARGET_JS_PATH="$TARGET/nscl/$REL_JS_PATH"
+if [[ -f "$TARGET_JS_PATH" ]] && node "$BASE/TLD/update.js" "$TARGET_JS_PATH"; then
   echo "Updated TLDs"
-  cp -f "$TLDJS" "$BASE/common/"
+  if [[ $(git config --get user.name) == "hackademix" ]]; then
+    pushd "$BASE"
+    cp -f "$TARGET_JS_PATH" "$REL_JS_PATH"
+    if [[ $(git status --short) == " M $REL_JS_PATH']]
+    popd
+  fi
 fi
 
 exit 0

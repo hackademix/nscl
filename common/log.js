@@ -19,17 +19,23 @@
  */
 
 {
-  let PREFIX = typeof browser === "object" && typeof importScripts === "undefined"
+  const PREFIX = typeof browser === "object" && typeof importScripts === "undefined"
     ? `[${browser.runtime.getManifest().name}]` : '';
 
-  let debugCount = 0;
+  const startupTime = Date.now();
+  let lastDebugTime = startupTime;
+  let ordinal = 1;
 
   function log(msg, ...rest) {
     console.log(`${PREFIX} ${msg}`, ...rest);
   }
 
   function debug(msg, ...rest) {
-    console.debug(`${PREFIX}:${debugCount++} ${msg}`, ...rest);
+    const ts = Date.now();
+    const sinceStartup = ts - startupTime;
+    const elapsed = ts - lastDebugTime;
+    lastDebugTime = ts;
+    console.debug(`${PREFIX}(#${ordinal++},${elapsed},${sinceStartup}): ${msg}`, ...rest);
   }
 
   function error(e, msg, ...rest) {

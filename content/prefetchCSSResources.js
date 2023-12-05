@@ -136,6 +136,8 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     return shadow;
   };
 
+  const styleClass = HTMLStyleElement, linkClass = HTMLLinkElement;
+
   const MEDIA_DISABLER = "speech and (width > 0px)"
 
   let keepDisabled = (o, v = true) => {
@@ -143,7 +145,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     if (!v === !shadow.keepDisabled) return false;
     let isSheet = o instanceof StyleSheet;
     if (!("keepDisabled" in shadow || isSheet)) {
-      if (o instanceof HTMLStyleElement) {
+      if (o instanceof styleClass) {
         observer.observe(o, { characterData: true, attributeFilter: ["media"] });
       } else {
         observer.observe(o, {attributeFilter: ["href", "media", "rel"]});
@@ -311,7 +313,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     let { sheet } = styleNode;
     if (sheet) {
       process(sheet);
-    } else if (styleNode instanceof HTMLStyleElement) {
+    } else if (styleNode instanceof styleClass) {
       let { textContent } = styleNode;
       if (/(?:^|[\s;}])@import\b/i.test(textContent)) {
         keepDisabled(styleNode);
@@ -327,7 +329,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
           } catch (e) { }
         }
       }
-    } else if (styleNode instanceof HTMLLinkElement
+    } else if (styleNode instanceof linkClass
       && styleNode.relList.contains("stylesheet")
       && styleNode.href) {
       if (styleNode.media) {
@@ -341,20 +343,19 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         }
       }
       keepDisabled(styleNode);
-    } else if (styleNode.querySelectorAll) {
-      for (let n of styleNode.querySelectorAll("style,link")) {
-        checkNode(n);
-      }
     }
   }
 
   let observer = new MutationObserver(records => {
-    for (let r of records) {
+    for (var r of records) {
       switch(r.type) {
         case "childList": // any new link / style element?
-          if (r.addedNodes) {
-            for (let n of r.addedNodes) {
-              checkNode(n);
+          for (var n of r.addedNodes) {
+            switch (n.constructor) {
+              case styleClass:
+              case linkClass:
+                checkNode(n);
+              break;
             }
           }
           break;
@@ -381,7 +382,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   let loadedLinks = new WeakMap();
   document.documentElement.addEventListener("load", ev => {
     let link = ev.target;
-    if (link instanceof HTMLLinkElement) {
+    if (link instanceof linkClass) {
       if (loadedLinks.get(link) !== link.href) {
         loadedLinks.set(link, link.href);
         processAll();

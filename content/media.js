@@ -79,7 +79,9 @@ if ("MediaSource" in window) {
       mediaBlocker = !ns.allows("media");
       if (mediaBlocker) {
         debug("mediaBlocker set via fetched policy.");
-        mozPatch();
+        if (ns.canScript) {
+          mozPatch();
+        }
       }
     });
     mozPatch = () => patchWindow((win, {xray})=> {

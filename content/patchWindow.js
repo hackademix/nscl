@@ -99,7 +99,10 @@ function patchWindow(patchingCallback, env = {}) {
     this.onMessage = null;
   }
   let port = new Port("extension", "page");
-
+  if (patchWindow.disabled) {
+    console.debug("patchWindow disabled."); // DEV_ONLY
+    return port;
+  }
   let nativeExport = this && this.exportFunction || typeof exportFunction == "function";
   if (!nativeExport) {
     // Chromium
@@ -291,6 +294,10 @@ function patchWindow(patchingCallback, env = {}) {
     }
     // auto-trigger window patching whenever new elements are added to the DOM
     let patchAll = () => {
+      if (patchWindow.disabled) {
+        console.debug("patchWindow disabled: disconnecting MutationObserver."); // DEV_ONLY
+        observer.disconnect();
+      }
       const win = xray.unwrap(window);
       for (let j = 0; j in win; j++) {
         try {
@@ -420,3 +427,28 @@ if (patchWindow.xrayEnabled) {
     frameElement.dispatchEvent(new CustomEvent(eventId));
   }
 }
+
+Object.defineProperty(patchWindow, "disabled", {
+  get() {
+    if (typeof ns === "object" && ns) {
+      if (ns.allows) {
+        const value = !ns.allows("script");
+        Object.defineProperty(patchWindow, "disabled", { value, configurable: true });
+        return value;
+      }
+      if (typeof ns.on === "function") {
+        ns.on("capabilities", () => {
+          if (ns.allows) {
+            this.disabled;
+          }
+        });
+      }
+    }
+    return false;
+  },
+  set(value) {
+    Object.defineProperty(patchWindow, "disabled", { value, configurable: true });
+    return value;
+  },
+  configurable: true,
+});

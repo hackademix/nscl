@@ -22,7 +22,12 @@
 // depends on nscl/common/Messages.js
 "use strict";
 
-if (patchWindow.xrayEnabled) { // Firefox only
+ns.on("capabilities", () => {
+  if (!patchWindow.xrayEnabled || !ns.canScript) {
+    // hook scripting-enabled pages on Firefox only
+    return;
+  }
+
   debug("Prompt Hook installation", document.URL); // DEV_ONLY
   const patchPrompts = (scope, {port, xray}) => {
     for (let methodName of ["alert", "confirm", "prompt"]) {
@@ -49,4 +54,4 @@ if (patchWindow.xrayEnabled) { // Firefox only
     debug("Prompt Hook triggered"); // DEV_ONLY
     Messages.send("promptHook");
   }
-}
+});

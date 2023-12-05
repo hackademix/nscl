@@ -22,8 +22,9 @@
 "use strict";
 ns.on("capabilities", event => {
   debug("WebGL Hook", document.URL, document.documentElement && document.documentElement.innerHTML, ns.capabilities); // DEV_ONLY
-  if (ns.allows("webgl")) return;
-
+  if (!ns.canScript || ns.allows("webgl")) {
+    return;
+  }
   function modifyGetContext(scope, {port, xray}) {
     let dispatchEvent = EventTarget.prototype.dispatchEvent;
     let { Event } = scope;

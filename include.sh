@@ -57,7 +57,10 @@ if [[ -f "$TARGET_JS_PATH" ]] && node "$BASE/TLD/update.js" "$TARGET_JS_PATH"; t
   if [[ $(git config --get user.name) == "hackademix" ]]; then
     pushd "$BASE"
     cp -f "$TARGET_JS_PATH" "$REL_JS_PATH"
-    if [[ $(git status --short) == " M $REL_JS_PATH']]
+    if [[ $(git status --short) == " M $REL_JS_PATH" ]]; then
+      git add "$REL_JS_PATH"
+      git commit -m'Updated TLDs.'
+    fi
     popd
   fi
 fi

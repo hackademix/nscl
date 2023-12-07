@@ -26,41 +26,49 @@ var https = require('https');
 var punycode = require('punycode');
 
 const args = process.argv.slice(2);
-const TLD_CACHE = "public_suffix_list.dat";
-const TLD_URL = `https://publicsuffix.org/list/${TLD_CACHE}`;
+const TLD_URL = `https://publicsuffix.org/list/public_suffix_list.dat`;
 const TLD_OUT = args[0] || "../common/tld.js";
 
-var offline_tld_dat = process.env.NSCL_TLD_DAT ? path.resolve(process.env.NSCL_TLD_DAT) : null;
+const offlineTldDat = process.env.NSCL_TLD_DAT ? path.resolve(process.env.NSCL_TLD_DAT) : null;
 
 process.chdir(__dirname);
 
 let ts = Date.now();
 
-if (offline_tld_dat) {
-  console.log(`Updating tld.js from ${offline_tld_dat} ...`);
-  fs.copyFileSync(offline_tld_dat, TLD_CACHE, fs.constants.COPYFILE_EXCL);
-  parse();
+if (offlineTldDat) {
+  console.log(`Updating tld.js from ${offlineTldDat} ...`);
+  parse(fs.readFileSync(offlineTldDat, 'utf8'));
 }
 else {
+  let chunks = [];
   https.get(TLD_URL, res => {
-    res.pipe(fs.createWriteStream(TLD_CACHE));
+    if (res.statusCode !== 200) {
+      console.error(`${TLD_URL} status code: ${res.statusCode}`);
+      process.exit(2);
+    }
+
+    res.on("data", chunk => {
+      chunks.push(chunk);
+    })
     res.on("end", function() {
       console.log(`${TLD_URL} retrieved in ${Date.now() - ts}ms.`);
-      parse();
+      parse(chunks.join(''));
     });
   });
 }
 
-function parse() {
+function parse(tldData) {
   let section;
 
   const sections = /^\/\/\s*===BEGIN (ICANN|PRIVATE) DOMAINS===\s*$/;
   const comment  = /^\/\/.*?/;
   const splitter = /(\!|\*\.)?(.+)/;
+  const eof = "// ===END PRIVATE DOMAINS===";
+  let complete = false;
 
   const tlds = {};
-
-  for(let line of fs.readFileSync(TLD_CACHE, 'utf8').split(/[\r\n]/)) {
+  console.debug("tldData length", tldData.length);
+  for(var line of tldData.split(/[\r\n]/)) {
     line = line.trim();
 
     if(sections.test(line)) {
@@ -69,8 +77,15 @@ function parse() {
       continue;
     }
 
-    if(!section || comment.test(line) || !splitter.test(line))
+    if(!section || !splitter.test(line))
       continue;
+
+    if (comment.test(line)) {
+      if (line === eof) {
+        complete = true;
+      }
+      continue;
+    }
 
     let parts = splitter.exec(line);
     let tld  = punycode.toASCII(parts[2]),
@@ -83,10 +98,8 @@ function parse() {
     tlds[section][tld] = level;
   }
 
-  if(!(tlds.icann && tlds.private))
+  if(!(complete && tlds.icann && tlds.private))
     throw `Error in TLD parser`;
-
-  fs.unlinkSync(TLD_CACHE);
 
   let tldOut = fs.readFileSync(TLD_OUT, 'utf8');
   let json = JSON.stringify(tlds);
@@ -95,6 +108,7 @@ function parse() {
     tldOut = /^s*\{/.test(tldOut) ? json
         : tldOut.replace(/(\btlds = )\{[^]*?\};/, `$1${json};`);
     fs.writeFileSync(TLD_OUT, tldOut);
+    fs.writeFileSync("public_suffix_list.dat", tldData);
     console.log(`${TLD_OUT} updated!`)
     exitCode = 0;
   } else {

@@ -39,6 +39,9 @@ var TabCache = (() => {
   return {
     get(tabId) {
       return cache.get(tabId);
+    },
+    async async(tabId) {
+      return cache.get(tabId) || await browser.tabs.get(tabId);
     }
   };
 })();

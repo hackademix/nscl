@@ -43,8 +43,11 @@
       }
 
       let tabUrlCache = new Map();
+      browser.tabs.onRemoved.addListener(tab => {
+        tabUrlCache.delete(tab.id);
+      });
+
       let asyncResults = new Map();
-      let tabRemovalListener = null;
       let CANCEL = {cancel: true};
       let {TAB_ID_NONE} = browser.tabs;
 
@@ -83,11 +86,6 @@
         if (!tabUrl) {
           if (isTop) {
             tabUrlCache.set(tabId, tabUrl = documentUrl);
-            if (!tabRemovalListener) {
-              browser.tabs.onRemoved.addListener(tabRemovalListener = tab => {
-                tabUrlCache.delete(tab.id);
-              });
-            }
           } else {
             tabUrl = tabUrlCache.get(tabId);
           }
@@ -173,33 +171,31 @@
           }
         }
       }
+
+      // We cannot configure these listeners lazily/dynamically anymore
+      // because of the event pages / service workers stateless model.
+      browser.webRequest.onBeforeRequest.addListener(onBeforeRequest,
+        {
+          urls: [`${ENDPOINT_PREFIX}*`],
+          types: ["xmlhttprequest"]
+        },
+        ["blocking"]
+      );
+      browser.webRequest.onHeadersReceived.addListener(onHeaderReceived,
+        {
+          urls: ["<all_urls>"],
+          types: ["main_frame", "sub_frame"]
+        },
+        ["blocking", "responseHeaders"]
+      );
+
       browser.runtime.onSyncMessage = Object.freeze({
         ENDPOINT_PREFIX,
         addListener(l) {
           listeners.add(l);
-          if (listeners.size === 1) {
-            browser.webRequest.onBeforeRequest.addListener(onBeforeRequest,
-              {
-                urls: [`${ENDPOINT_PREFIX}*`],
-                types: ["xmlhttprequest"]
-              },
-              ["blocking"]
-            );
-            browser.webRequest.onHeadersReceived.addListener(onHeaderReceived,
-              {
-                urls: ["<all_urls>"],
-                types: ["main_frame", "sub_frame"]
-              },
-              ["blocking", "responseHeaders"]
-            );
-          }
         },
         removeListener(l) {
           listeners.remove(l);
-          if (listeners.size === 0) {
-            browser.webRequest.onBeforeRequest.removeListener(onBeforeRequest);
-            browser.webRequest.onHeadersReceived.removeListener(onHeadersReceived);
-          }
         },
         hasListener(l) {
           return listeners.has(l);

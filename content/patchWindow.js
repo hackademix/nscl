@@ -298,10 +298,9 @@ function patchWindow(patchingCallback, env = {}) {
         console.debug("patchWindow disabled: disconnecting MutationObserver."); // DEV_ONLY
         observer.disconnect();
       }
-      const win = xray.unwrap(window);
-      for (let j = 0; j in win; j++) {
+      for (let j = 0; j in window; j++) {
         try {
-          modifyWindow(win[j]);
+          modifyWindow(window[j]);
         } catch (e) {
           console.error(e, `Patching frames[${j}]`);
         }

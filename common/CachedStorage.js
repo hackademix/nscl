@@ -21,8 +21,23 @@
 var CachedStorage = (() => {
   const scopes = new WeakMap();
 
+  const DEFER_DELAY = 1000;
+  let deferredTasks = null;
+  const performTasks = async () => {
+    for (let t of deferredTasks) t();
+    deferredTasks = null;
+  };
+  const deferTasks = (...tasks) => {
+    if (!deferredTasks) {
+      deferredTasks = tasks;
+      setTimeout(performTasks, DEFER_DELAY);
+    } else {
+      deferredTasks.push(...tasks);
+    }
+  };
+
   const addNameSpace = (nameSpace, properties, keys) => {
-    const prefix = nameSpace ? `${nameSpace}.` : '';
+    const prefix = nameSpace ? `${nameSpace}.` : "";
     const nameSpacedProps = {};
     for (const key of keys) {
       nameSpacedProps[`${prefix}${key}`] = properties[key];
@@ -40,13 +55,18 @@ var CachedStorage = (() => {
   };
 
   return {
-    async init(properties = null, nameSpace = "", scope = null, storageType = "session") {
+    async init(
+      properties = null,
+      nameSpace = "",
+      scope = null,
+      storageType = "session"
+    ) {
       if (!properties) {
-        console.warn("CachedStorage.init(): no properties!")
+        console.warn("CachedStorage.init(): no properties!");
         return null;
       }
 
-      scope ??= nameSpace && globalThis[nameSpace] || globalThis;
+      scope ??= (nameSpace && globalThis[nameSpace]) || globalThis;
 
       for (let p in properties) {
         if (p in scope) {
@@ -57,10 +77,11 @@ var CachedStorage = (() => {
       }
 
       if (!(storageType in browser.storage)) {
-        console.warn(`CachedStorage.init(): no browser.storage.${storageType}, falling back to vanilla properties`);
-        return Object.assign(scope , properties);
+        console.warn(
+          `CachedStorage.init(): no browser.storage.${storageType}, falling back to vanilla properties`
+        );
+        return Object.assign(scope, properties);
       }
-
 
       const keys = Object.keys(properties);
       if (nameSpace) {
@@ -71,34 +92,52 @@ var CachedStorage = (() => {
 
       let metadata = scopes.get(scope);
       if (!metadata) {
-        scopes.set(scope, metadata = {});
+        scopes.set(scope, (metadata = { storage: {} }));
       }
 
-      const ns = (metadata[storageType] ??= new Map()).get(nameSpace);
+      const ns = (metadata.storage[storageType] ??= new Map()).get(nameSpace);
       if (ns) {
         for (const key of keys) ns.add(key);
       } else {
-        metadata[storageType].set(nameSpace, new Set(keys));
+        metadata.storage[storageType].set(nameSpace, new Set(keys));
       }
-
-      return Object.assign(scope,
-        removeNameSpace(nameSpace,
-          await browser.storage[storageType].get(properties)));
+      return Object.assign(
+        scope,
+        removeNameSpace(
+          nameSpace,
+          await browser.storage[storageType].get(properties)
+        )
+      );
     },
-    async save(scope = globalThis) {
-      const metadata = await scopes.get(scope);
+    async save(scope = globalThis, defer = false) {
+      const metadata = scopes.get(scope);
       if (!metadata) {
-        console.warn(`CacheStorage.save(): metadata not found for scope ${scope}!`);
+        console.warn(
+          `CacheStorage.save(): metadata not found for scope ${scope}!`
+        );
         return false;
       }
+
+      if (metadata.deferredSave) return;
+      if ((defer ||= Date.now() - metadata.lastSaved < 20)) {
+        metadata.deferredSave = true;
+        return Promise.resolve(
+          deferTasks(() => {
+            metadata.deferredSave = false;
+            this.save(scope);
+          })
+        );
+      }
+
       const savingTasks = [];
-      for (const [storageType, ns] of Object.entries(metadata)) {
+      for (const [storageType, ns] of Object.entries(metadata.storage)) {
         for (const [nameSpace, keys] of ns.entries()) {
           const properties = addNameSpace(nameSpace, scope, keys);
           savingTasks.push(browser.storage[storageType].set(properties));
         }
       }
+      metadata.lastSaved = Date.now();
       return await Promise.all(savingTasks);
-    }
-  }
+    },
+  };
 })();

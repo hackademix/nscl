@@ -45,7 +45,7 @@ class CSP {
   }
 }
 
-CSP.isEmbedType = type => /\b(?:application|video|audio)\b/.test(type) && !/^application\/(?:(?:xhtml\+)?xml|javascript)$/.test(type);
+CSP.isEmbedType = type => /\b(?:application|video|audio|image\/svg)\b/.test(type) && !/^application\/(?:(?:xhtml\+)?xml|javascript)$/.test(type);
 CSP.headerName = "content-security-policy";
 CSP.patchDataURI = (uri, blocker) => {
   let parts = /^data:(?:[^,;]*ml|unknown-content-type)(;[^,]*)?,/i.exec(uri);

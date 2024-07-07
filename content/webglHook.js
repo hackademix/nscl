@@ -43,6 +43,7 @@ ns.on("capabilities", event => {
 
       const handler = cloneInto({
         apply: function(targetObj, thisArg, argumentsList) {
+          debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${canvas}`);
           if (thisArg instanceof CanvasClass && /webgl/i.test(argumentsList[0])) {
             let target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
             port.postMessage("webgl", target);
@@ -59,6 +60,7 @@ ns.on("capabilities", event => {
 
   let port = patchWindow(modifyGetContext);
   port.onMessage = (msg, {target: canvas}) => {
+    debug(`WebGLHook msg: ${msg}, canvas: ${canvas}`);
     if (msg !== "webgl") return;
     let request = {
       id: "noscript-webgl",
@@ -68,6 +70,11 @@ ns.on("capabilities", event => {
       embeddingDocument: true,
     };
     seen.record({policyType: "webgl", request, allowed: false});
+    notifyPage();
+    if (!(canvas instanceof HTMLCanvasElement) && document.body) {
+      canvas = document.createElement("canvas");
+      document.body.insertBefore(canvas, document.body.firstChild);
+    }
     if (canvas instanceof HTMLCanvasElement) {
       try {
         let ph = PlaceHolder.create("webgl", request);
@@ -77,6 +84,5 @@ ns.on("capabilities", event => {
         error(e);
       }
     }
-    notifyPage();
   }
 });

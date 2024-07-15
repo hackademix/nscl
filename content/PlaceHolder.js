@@ -22,6 +22,7 @@ var PlaceHolder = (() => {
   const HANDLERS = new Map();
   const CLASS_NAME = "__NoScript_PlaceHolder__ __NoScript_Theme__";
   const SELECTOR = `a.${CLASS_NAME.split(/\s+/).join('.')}`;
+  const OFFSCREEN = new Set();
 
   var theme;
   let updateTheme = replacement => {
@@ -157,7 +158,21 @@ var PlaceHolder = (() => {
     }
 
     replace(element) {
-      if (!element.parentElement) return;
+      if (!element.parentElement) {
+        if (!this.request.offscreen || OFFSCREEN.has(this.policyType) || !document.body) {
+          return;
+        }
+        // offscreen placeholder
+        this.request.embeddingDocument = true;
+        const CLASS = "__NoScript_Offscreen_PlaceHolders__";
+        let offscreenContainer = document.querySelector(`.${CLASS}`);
+        if (!offscreenContainer) {
+          offscreenContainer = document.body.appendChild(document.createElement("div"));
+          offscreenContainer.className = CLASS;
+        }
+        OFFSCREEN.add(this.policyType);
+        offscreenContainer.appendChild(element);
+      }
       if (element.parentElement instanceof HTMLMediaElement) {
         this.replace(element.parentElement);
         return;

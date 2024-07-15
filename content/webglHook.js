@@ -73,7 +73,7 @@ ns.on("capabilities", event => {
     notifyPage();
     if (!(canvas instanceof HTMLCanvasElement)) {
       request.offscreen = true;
-      canvas = document.createElement("span");
+      canvas = null;
     }
     try {
       let ph = PlaceHolder.create("webgl", request);

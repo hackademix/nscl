@@ -158,7 +158,7 @@ var PlaceHolder = (() => {
     }
 
     replace(element) {
-      if (!element.parentElement) {
+      if (!element?.parentElement) {
         if (!this.request.offscreen || OFFSCREEN.has(this.policyType) || !document.body) {
           return;
         }
@@ -167,9 +167,10 @@ var PlaceHolder = (() => {
         const CLASS = "__NoScript_Offscreen_PlaceHolders__";
         let offscreenContainer = document.querySelector(`.${CLASS}`);
         if (!offscreenContainer) {
-          offscreenContainer = document.body.appendChild(document.createElement("div"));
+          offscreenContainer = document.body.appendChild(createHTMLElement("div"));
           offscreenContainer.className = CLASS;
         }
+        if (!element) element = createHTMLElement("span");
         OFFSCREEN.add(this.policyType);
         offscreenContainer.appendChild(element);
       }
@@ -189,6 +190,8 @@ var PlaceHolder = (() => {
 
       let replacement = createHTMLElement("a");
       replacement.className = CLASS_NAME;
+      replacement.dataset.policyType = this.policyType; // help (users?) styling per-type
+
       cloneStyle(element, replacement);
       replacement.style.visibility = "hidden"; // ensure we don't flash on delayed CSS
       if (ns.embeddingDocument) {

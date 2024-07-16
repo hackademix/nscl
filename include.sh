@@ -50,19 +50,6 @@ filter_inclusions "$TARGET" manifest.json
 [[ -d "$TARGET/nscl" ]] && filter_inclusions "$TARGET/nscl/"
 
 # auto-update TLDs if included
-REL_JS_PATH="common/tld.js"
-TARGET_JS_PATH="$TARGET/nscl/$REL_JS_PATH"
-if [[ -f "$TARGET_JS_PATH" ]] && node "$BASE/TLD/update.js" "$TARGET_JS_PATH"; then
-  echo "Updated TLDs"
-  if [[ $(git config --get user.name) == "hackademix" ]]; then
-    pushd "$BASE"
-    cp -f "$TARGET_JS_PATH" "$REL_JS_PATH"
-    if [[ $(git status --short) == " M $REL_JS_PATH" ]]; then
-      git add "$REL_JS_PATH"
-      git commit -m'Updated TLDs.'
-    fi
-    popd
-  fi
-fi
+"$BASE/update-tlds.sh" "$TARGET/nscl/common/tld.js"
 
 exit 0

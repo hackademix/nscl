@@ -20,7 +20,7 @@
 
 "use strict";
 (() => {
-  let MOZILLA = "mozSystem" in XMLHttpRequest.prototype;
+  let MOZILLA = self.XMLHttpRequest && "mozSystem" in self.XMLHttpRequest.prototype;
   let ENDPOINT_ORIGIN = "https://[ff00::]";
   let ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/nscl/${browser.runtime.getURL("syncMessage")}?`;
 

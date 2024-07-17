@@ -44,8 +44,9 @@ filter_inclusions() {
   done
   popd >/dev/null 2>&1
 }
-
-filter_inclusions "$TARGET" manifest.json
+# if a service worker is declared in the manifest, we will inspect its script inclusions as well
+SERVICE_WORKER=$(grep -e '"service_worker":' "$TARGET/manifest.json" | sed -re 's/.*: "(.*)",?/\1/')
+filter_inclusions "$TARGET" manifest.json $SERVICE_WORKER
 # include also references from nscl scripts already included
 [[ -d "$TARGET/nscl" ]] && filter_inclusions "$TARGET/nscl/"
 

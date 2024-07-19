@@ -25,7 +25,9 @@
 
 var DocStartInjection = (() => {
   const MSG_ID = "__DocStartInjection__";
-  let repeating = !("contentScripts" in browser);
+  const repeating = !("contentScripts" in browser);
+  const mv3Callbacks = repeating && !browser.tabs.executeScript; // mv3 on Chrome
+
   let scriptBuilders = new Set();
   let getId = ({requestId, tabId, frameId, url}) => requestId || `${tabId}:${frameId}:${url}`;
   let pending = new Map();
@@ -48,15 +50,31 @@ var DocStartInjection = (() => {
     if (tabId < 0 || !/^(?:(?:https?|ftp|data|blob|file):|about:blank$)/.test(url)) return;
 
     await Promise.all([...scriptBuilders].map(async buildScript => {
+      let script;
       try {
-        let script = await buildScript({tabId, frameId, url});
-        if (script) scripts.add(`try {
+        script = await buildScript({tabId, frameId, url});
+        if (!script) return;
+        if (mv3Callbacks) {
+          if (typeof script !== "object") {
+            throw new Error('On MV3 only {data: jsonObject, callback: "globalFunctionName", assign: "globalScopeVarName"} injection can work!')
+          }
+          const {data, callback, assign} = script;
+          scripts.add({
+            data,
+            callback,
+            assign,
+          });
+          return;
+        }
+        // mv2
+        scripts.add(`try {
           ${typeof script === "function" ? `(${script})();` : script}
           } catch (e) {
             console.error("Error in DocStartInjection script", e);
-          }`);
+          }`
+        );
       } catch (e) {
-        error("Error calling DocStartInjection scriptBuilder", buildScript, e);
+        error(`Error calling DocStartInjection scriptBuilder: buildScript ${buildScript} - script: ${script}`, e);
       }
     }));
 
@@ -68,9 +86,42 @@ var DocStartInjection = (() => {
     let id = getId(request);
 
     if (repeating) {
-      let scriptsBlock = [...scripts].join("\n");
-      let injectionId = `injection:${uuid()}:${await sha256(scriptsBlock)}`;
-      let args = {
+      let injectionId = `injection:${uuid()}:${await sha256(Math.random().toString(16))}`;
+      let args = mv3Callbacks ?
+      // mv3 browser.scripting.executeScript()
+      {
+        func: (url, injectionId, scripts) => {
+          if (document.readyState === "complete" ||
+              window[injectionId] ||
+              document.URL !== url
+          ) return window[injectionId];
+          window[injectionId] = true;
+          for (s of scripts) {
+            const {callback, assign, data} = s;
+            try {
+              if (assign) {
+                self[assign] = data;
+              }
+              if (callback) {
+                let cb = self[callback];
+                if (typeof cb == "function") {
+                  cb.call(self, data);
+                } else {
+                  console.warn(`callback self.${callback} is not a function (${cb}).`);
+                }
+              }
+            } catch (e) {
+              console.error(`Error in DocStartInjection script ${JSON.stringify(s)}`, e);
+            }
+          }
+          return document.readyState === "loading";
+        },
+        args: [url, injectionId, [...scripts]],
+        target: {tabId, frameIds: [frameId]},
+        injectImmediately: true,
+      } :
+      // mv2 browser.tabs.executeScript()
+      {
         code: `(() => {
           let injectionId = ${JSON.stringify(injectionId)};
           if (document.readyState === "complete" ||
@@ -78,7 +129,7 @@ var DocStartInjection = (() => {
               document.URL !== ${JSON.stringify(url)}
           ) return window[injectionId];
           window[injectionId] = true;
-          ${scriptsBlock}
+          ${[...scripts].join("\n")}
           return document.readyState === "loading";
         })();`,
         runAt: "document_start",
@@ -117,11 +168,21 @@ var DocStartInjection = (() => {
   }
 
   async function run(request, repeat = false) {
-    let id = getId(request);
-    let args = pending.get(id);
+    const id = getId(request);
+    const args = pending.get(id);
     if (!args) return;
     let {url, tabId} = request;
-    let attempts = 0, success = false;
+    let attempts = 0;
+    let success = false;
+    const execute = mv3Callbacks ?
+      async () => {
+        const ret = await browser.scripting.executeScript(args);
+        return ret[0].result;
+      }
+    : async() => {
+       const ret = await browser.tabs.executeScript(tabId, args);
+       return ret[0];
+    };
     for (; pending.has(id);) {
       attempts++;
       try {
@@ -133,8 +194,8 @@ var DocStartInjection = (() => {
           }
           console.error(`DocStartInjection at ${url} ${attempts} failed attempts so far...`);
         }
-        let ret = await browser.tabs.executeScript(tabId, args);
-        if (success = ret[0]) {
+        if (execute()) {
+          success = true;
           break;
         }
       } catch (e) {
@@ -143,6 +204,10 @@ var DocStartInjection = (() => {
         }
         if (!/\baccess\b/.test(e.message)) {
           console.error(e.message);
+        }
+        if (!browser.tabs.executeScript) {
+          console.error(`MV3 fatality, cannot script tab ${tabId}! ${JSON.stringify(args)}`);
+          break;
         }
         if (attempts % 1000 === 0) {
           console.error(`DocStartInjection at ${url} ${attempts} failed attempts`, e);

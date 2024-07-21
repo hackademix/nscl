@@ -56,8 +56,11 @@
  */
 
 function patchWindow(patchingCallback, env = {}) {
+  const nativeExport = typeof exportFunction == "function";
   if (typeof patchingCallback !== "function") {
-    patchingCallback = new Function("unwrappedWindow", "env", patchingCallback);
+    patchingCallback =
+      nativeExport ? new Function("unwrappedWindow", "env", patchingCallback)
+      : `function (unwrappedWindow, env) {\n${patchingCallback}\n}`;
   }
   let eventId = this && this.eventId || `windowPatchMessages:${uuid()}`;
   let { dispatchEvent, addEventListener } = window;
@@ -103,8 +106,8 @@ function patchWindow(patchingCallback, env = {}) {
     console.debug("patchWindow disabled."); // DEV_ONLY
     return port;
   }
-  let nativeExport = this && this.exportFunction || typeof exportFunction == "function";
-  if (!nativeExport) {
+   this && this.exportFunction || typeof exportFunction == "function";
+  if (!(nativeExport || this && this.exportFunction)) {
     // Chromium
     let exportFunction = (func, targetObject, {defineAs, original} = {}) => {
       try {
@@ -184,8 +187,8 @@ function patchWindow(patchingCallback, env = {}) {
     let cloneInto = (obj, targetObject) => {
       return obj; // dummy for assignment
     };
-    let script = document.createElement("script");
-    script.text = `
+
+    const code = `
     (() => {
       let patchWindow = ${patchWindow};
       let cloneInto = ${cloneInto};
@@ -201,7 +204,17 @@ function patchWindow(patchingCallback, env = {}) {
       }).patchWindow(${patchingCallback}, env);
     })();
     `;
-    document.documentElement.insertBefore(script, document.documentElement.firstChild);
+    if (!("document" in self)) {
+      // we're doing it with userScripts on mv3
+      return {eventId, code};
+    }
+    let script = document.createElement("script");
+    script.text = code;
+    try {
+      document.documentElement.insertBefore(script, document.documentElement.firstChild);
+    } catch(e) {
+      console.error(e, code);
+    }
     script.remove();
     return port;
   }

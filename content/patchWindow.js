@@ -56,23 +56,28 @@
  */
 
 function patchWindow(patchingCallback, env = {}) {
-  const nativeExport = typeof exportFunction == "function";
-  if (typeof patchingCallback !== "function") {
-    patchingCallback =
-      nativeExport ? new Function("unwrappedWindow", "env", patchingCallback)
-      : `function (unwrappedWindow, env) {\n${patchingCallback}\n}`;
-  }
-  let eventId = this && this.eventId || `windowPatchMessages:${uuid()}`;
-  let { dispatchEvent, addEventListener } = window;
+  const forcedPortId = patchingCallback.portId;
+  const justPort = forcedPortId && !patchingCallback.code;
+  const portId = forcedPortId ||
+    this && this.portId ||
+    `windowPatchMessages:${uuid()}`;
+
+  const { dispatchEvent, addEventListener } = self;
 
   function Port(from, to) {
+    console.debug(`Creating ${from}->${to} port ${portId}`); // DEV_ONLY
+    if (!self.document) {
+      // ServiceWorker scope, dummy port, won't be used.
+      this.postMessage = () => {};
+      return;
+    }
     // we need a double dispatching dance and maintaining a stack of
     // return values / thrown errors because Chromium seals the detail object
     // (on Firefox we could just append further properties to it...)
     let retStack = [];
 
     function fire(e, detail, target = window) {
-      dispatchEvent.call(target, new CustomEvent(`${eventId}:${e}`, {detail, composed: true}));
+      dispatchEvent.call(target, new CustomEvent(`${portId}:${e}`, {detail, composed: true}));
     }
     this.postMessage = function(msg, target = window) {
       retStack.push({});
@@ -82,7 +87,7 @@ function patchWindow(patchingCallback, env = {}) {
       if (ret.error) throw ret.error;
       return ret.value;
     };
-    addEventListener.call(window, `${eventId}:${from}`, event => {
+    addEventListener.call(window, `${portId}:${from}`, event => {
       if (typeof this.onMessage === "function" && event.detail) {
         let ret = {};
         try {
@@ -93,7 +98,7 @@ function patchWindow(patchingCallback, env = {}) {
         fire(`return:${to}`, ret);
       }
     }, true);
-    addEventListener.call(window, `${eventId}:return:${from}`, event => {
+    addEventListener.call(window, `${portId}:return:${from}`, event => {
       let {detail} = event;
       if (detail && retStack.length) {
        retStack[retStack.length -1] = detail;
@@ -106,7 +111,18 @@ function patchWindow(patchingCallback, env = {}) {
     console.debug("patchWindow disabled."); // DEV_ONLY
     return port;
   }
-   this && this.exportFunction || typeof exportFunction == "function";
+  if (justPort) {
+    return port;
+  } else if (patchingCallback.code) {
+    patchingCallback = patchingCallback.code;
+  }
+
+  const nativeExport = typeof exportFunction == "function";
+  if (typeof patchingCallback !== "function") {
+    patchingCallback =
+      nativeExport ? new Function("unwrappedWindow", "env", patchingCallback)
+      : `function (unwrappedWindow, env) {\n${patchingCallback}\n}`;
+  }
   if (!(nativeExport || this && this.exportFunction)) {
     // Chromium
     let exportFunction = (func, targetObject, {defineAs, original} = {}) => {
@@ -194,19 +210,19 @@ function patchWindow(patchingCallback, env = {}) {
       let cloneInto = ${cloneInto};
       let exportFunction = ${exportFunction};
       let env = ${JSON.stringify(env)};
-      let eventId = ${JSON.stringify(eventId)};
+      let portId = ${JSON.stringify(portId)};
       env.port = new (${Port})("page", "extension");
       ({
         patchWindow,
         exportFunction,
         cloneInto,
-        eventId,
+        portId,
       }).patchWindow(${patchingCallback}, env);
     })();
     `;
-    if (!("document" in self)) {
+    if (!self.document) {
       // we're doing it with userScripts on mv3
-      return {eventId, code};
+      return {portId, code};
     }
     let script = document.createElement("script");
     script.text = code;

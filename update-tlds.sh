@@ -10,20 +10,25 @@
 BASE="$(dirname "$0")"
 SRC="$(realpath "$(dirname "$BASE")")"
 REL_JS_PATH="common/tld.js"
-TARGET_JS_PATH="$1"
-if node "$BASE/TLD/update.js" "$TARGET_JS_PATH"; then
+if node "$BASE/TLD/update.js" $@; then
   echo "Updated TLDs"
 else
-  unset TARGET_JS_PATH
+  exit
+fi
+if [[ -f "$1" ]]; then
+  # Updated out-of-tree $1, nothing more to do.
+  exit
 fi
 
 if [[ $(git config --get user.name) == "hackademix" ]]; then
+  echo "Synchronizing nscl git repo."
   pushd "$BASE"
-  [[ $TARGET_JS_PATH ]] && [[ -f "$TARGET_JS_PATH" ]] && cp -f "$TARGET_JS_PATH" "$REL_JS_PATH"
   if git status --short | grep " M $REL_JS_PATH"; then
     git add "$REL_JS_PATH"
     git add "TLD/public_suffix_list.dat"
     git commit -m'Updated TLDs.'
+  else
+    echo "Repo already up-to-date."
   fi
   popd
 fi

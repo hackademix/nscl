@@ -28,6 +28,9 @@ var punycode = require('punycode');
 const args = process.argv.slice(2);
 const TLD_URL = `https://publicsuffix.org/list/public_suffix_list.dat`;
 const TLD_OUT = args[0] || "../common/tld.js";
+// If an output file has been specified, we will write the downloaded dat file
+// to args[1] if present, otherwise we will discard it.
+const DAT_OUT = args[1] || args[0] ? "" : "public_suffix_list.dat";
 
 const offlineTldDat = process.env.NSCL_TLD_DAT ? path.resolve(process.env.NSCL_TLD_DAT) : null;
 
@@ -108,7 +111,10 @@ function parse(tldData) {
     tldOut = /^s*\{/.test(tldOut) ? json
         : tldOut.replace(/(\btlds = )\{[^]*?\};/, `$1${json};`);
     fs.writeFileSync(TLD_OUT, tldOut);
-    fs.writeFileSync("public_suffix_list.dat", tldData);
+    if (DAT_OUT) {
+      fs.writeFileSync(DAT_OUT, tldData);
+      console.log(`${DAT_OUT} updated.`);
+    }
     console.log(`${TLD_OUT} updated!`)
     exitCode = 0;
   } else {

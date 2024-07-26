@@ -35,7 +35,6 @@ function CapsCSP(baseCSP = new CSP()) {
           // data: URIs loaded in objects may run scripts
           blockedTypes.add({type: "object", value: "http:"});
         }
-        blockedTypes.add({name:"sandbox", value: "allow-forms allow-downloads allow-top-navigation allow-same-origin"})
       }
 
       if (!blockHttp) {

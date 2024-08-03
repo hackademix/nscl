@@ -118,7 +118,41 @@
         return CANCEL;
       } };
 
-      let onHeaderReceived = request => {
+      const NOP = () => {};
+      let bug1899786 = NOP;
+      if (browser.webRequest.filterResponseData) {
+        bug1899786 = request => {
+          // work-around for https://bugzilla.mozilla.org/show_bug.cgi?id=1899786
+          let compressed = false, xml = false;
+          for (const {name, value} of request.responseHeaders) {
+            switch(name.toLowerCase()) {
+              case "content-encoding":
+                compressed ||= /^(?:gzip|compress|deflate|br|zstd)$/i.test(value);
+                break;
+              case "content-type":
+                xml ||= /\bxml\b/i.test(value);
+                break;
+            }
+            if (compressed && xml) {
+              console.log("Applying mozbug 1899786 work-around", request);
+              const filter = browser.webRequest.filterResponseData(request.requestId);
+              filter.ondata = e => {
+                filter.write(e.data);
+              };
+              filter.onstop = () => {
+                filter.close();
+              };
+              break;
+            }
+          }
+        }
+        (async () => {
+          const version = parseInt((await browser.runtime.getBrowserInfo()).version);
+          if (version < 126) bug1899786 = NOP;
+        })();
+      }
+
+      const onHeadersReceived = request => {
         let replaced = "";
         let {responseHeaders} = request;
         let rxFP = /^feature-policy$/i;
@@ -130,6 +164,9 @@
             );
           }
         }
+
+        bug1899786(request);
+
         return replaced ? {responseHeaders} : null;
       };
 
@@ -181,7 +218,7 @@
         },
         ["blocking"]
       );
-      browser.webRequest.onHeadersReceived.addListener(onHeaderReceived,
+      browser.webRequest.onHeadersReceived.addListener(onHeadersReceived,
         {
           urls: ["<all_urls>"],
           types: ["main_frame", "sub_frame"]
@@ -259,4 +296,5 @@
       return result;
     };
   }
+
 })();

@@ -35,7 +35,7 @@
       return v.toString(16);
     });
 
-  function uuid() {
+  var uuid = function() {
     try {
       return _impl();
     } catch (e) {

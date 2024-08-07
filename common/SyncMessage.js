@@ -136,9 +136,12 @@
             if (compressed && xml) {
               console.log("Applying mozbug 1899786 work-around", request);
               const filter = browser.webRequest.filterResponseData(request.requestId);
-              filter.onstart = e => {
-                filter.disconnect();
-              }
+              filter.ondata = e => {
+                filter.write(e.data);
+              };
+              filter.onstop = () => {
+                filter.close();
+              };
               break;
             }
           }

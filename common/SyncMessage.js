@@ -127,11 +127,19 @@
           for (const {name, value} of request.responseHeaders) {
             switch(name.toLowerCase()) {
               case "content-encoding":
-                compressed ||= /^(?:gzip|compress|deflate|br|zstd)$/i.test(value);
+                if (compressed || !(compressed =
+                    /^(?:gzip|compress|deflate|br|zstd)$/i.test(value))) {
+                  continue;
+                }
                 break;
               case "content-type":
-                xml ||= /\bxml\b/i.test(value);
+                if (xml || !(xml =
+                    /\bxml\b/i.test(value))) {
+                  continue;
+                }
                 break;
+              default:
+                continue;
             }
             if (compressed && xml) {
               console.log("Applying mozbug 1899786 work-around", request);

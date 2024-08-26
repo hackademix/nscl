@@ -47,8 +47,9 @@ var NoscriptElements = {
       noscript.replaceWith(replacement);
     }
 
+    const noscriptElements = document.getElementsByTagName("noscript"); // live list
     function replaceAll() {
-      for (let noscript of document.querySelectorAll("noscript")) {
+      for (var noscript of noscriptElements) {
         replace(noscript);
       }
     }

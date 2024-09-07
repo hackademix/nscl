@@ -90,6 +90,10 @@ ns.on("capabilities", event => {
     notifyWebGL(target);
   }
 
+  if (!(globalThis.OffscreenCanvas && new OffscreenCanvas(0,0).getContext("webgl"))) {
+    return;
+  }
+
   try {
     const channelID = `webglHook:{uuid()}`;
     const bc = new BroadcastChannel(channelID);

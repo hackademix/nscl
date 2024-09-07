@@ -19,6 +19,8 @@
  */
 
 // depends on nscl/content/patchWindow.js
+// depends on nscl/content/patchWorkers.js
+
 "use strict";
 ns.on("capabilities", event => {
   debug("WebGL Hook", document.URL, document.documentElement && document.documentElement.innerHTML, ns.capabilities); // DEV_ONLY
@@ -58,10 +60,7 @@ ns.on("capabilities", event => {
     }
   }
 
-  let port = patchWindow(modifyGetContext);
-  port.onMessage = (msg, {target: canvas}) => {
-    debug(`WebGLHook msg: ${msg}, canvas: ${canvas}`);
-    if (msg !== "webgl") return;
+  const notifyWebGL = canvas => {
     let request = {
       id: "noscript-webgl",
       type: "webgl",
@@ -71,7 +70,7 @@ ns.on("capabilities", event => {
     };
     seen.record({policyType: "webgl", request, allowed: false});
     notifyPage();
-    if (!(canvas instanceof HTMLCanvasElement)) {
+    if (canvas && !(canvas instanceof HTMLCanvasElement)) {
       request.offscreen = true;
       canvas = null;
     }
@@ -82,5 +81,36 @@ ns.on("capabilities", event => {
     } catch (e) {
       error(e);
     }
+  }
+
+  let port = patchWindow(modifyGetContext);
+  port.onMessage = (msg, {target}) => {
+    debug(`WebGLHook msg: ${msg}, target: ${target}`);
+    if (msg !== "webgl") return;
+    notifyWebGL(target);
+  }
+
+  try {
+    const channelID = `webglHook:{uuid()}`;
+    const bc = new BroadcastChannel(channelID);
+    bc.onmessage = notifyWebGL;
+    const workersPatch = () => {
+      const bc = new BroadcastChannel(channelID);
+      const getContext = OffscreenCanvas.prototype.getContext;
+      const handler = {
+        apply: function(targetObj, thisArg, argumentsList) {
+          console.debug(`WebGLHook called from ${new Error().stack}, ${thisArg},${globalThis}`);
+          if (/webgl/i.test(argumentsList[0])) {
+            bc.postMessage({});
+            return null;
+          }
+          return getContext.call(thisArg, ...argumentsList);
+        }
+      };
+      OffscreenCanvas.prototype.getContext = new Proxy(getContext, handler);
+    };
+    patchWorkers(`(${workersPatch})()`.replace("channelID", JSON.stringify(channelID)));
+  } catch(e) {
+    error(e);
   }
 });

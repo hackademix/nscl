@@ -23,10 +23,13 @@
 
 "use strict";
 ns.on("capabilities", event => {
-  debug("WebGL Hook", document.URL, document.documentElement && document.documentElement.innerHTML, ns.capabilities); // DEV_ONLY
-  if (!ns.canScript || ns.allows("webgl")) {
+  debug(`WebGLHook on ${document.URL} ${document.readyState} ${document.documentElement && document.documentElement.innerHTML}`, ns.capabilities); // DEV_ONLY
+  if (!ns.canScript || ns.allows("webgl") ||
+      !("HTMLCanvasElement" in window && document.createElement("canvas").getContext("webgl"))) {
+    debug(`WebGLHook bailing out, no need to block webgl  on ${document.URL}.`); // DEV_ONLY
     return;
   }
+
   function modifyGetContext(scope, {port, xray}) {
     let dispatchEvent = EventTarget.prototype.dispatchEvent;
     let { Event } = scope;
@@ -90,7 +93,10 @@ ns.on("capabilities", event => {
     notifyWebGL(target);
   }
 
+  debug(`WebGLHook installed on window ${document.URL}.`);
+
   if (!(globalThis.OffscreenCanvas && new OffscreenCanvas(0,0).getContext("webgl"))) {
+    debug(`WebGLHook: no OffScreenCanvas+webgl, no need to patch workers  on ${document.URL}.`); // DEV_ONLY
     return;
   }
 
@@ -99,11 +105,12 @@ ns.on("capabilities", event => {
     const bc = new BroadcastChannel(channelID);
     bc.onmessage = notifyWebGL;
     const workersPatch = () => {
+      console.debug(`Installing WebGLHook on ${globalThis} at ${location}.`); // DEV_ONLY
       const bc = new BroadcastChannel(channelID);
       const getContext = OffscreenCanvas.prototype.getContext;
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {
-          console.debug(`WebGLHook called from ${new Error().stack}, ${thisArg},${globalThis}`);
+          console.debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${globalThis}`); // DEV_ONLY
           if (/webgl/i.test(argumentsList[0])) {
             bc.postMessage({});
             return null;
@@ -113,7 +120,8 @@ ns.on("capabilities", event => {
       };
       OffscreenCanvas.prototype.getContext = new Proxy(getContext, handler);
     };
-    patchWorkers(`(${workersPatch})()`.replace("channelID", JSON.stringify(channelID)));
+    patchWorkers(`(${workersPatch})()`.replace(/\bchannelID\b/g, JSON.stringify(channelID)));
+    debug(`WebGLHook ready for workers spawned by ${document.URL}.`); // DEV_ONLY
   } catch(e) {
     error(e);
   }

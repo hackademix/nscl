@@ -18,6 +18,8 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// depends on /nscl/common/uuid.js
+
 "use strict";
 (() => {
   let MOZILLA = self.XMLHttpRequest && "mozSystem" in self.XMLHttpRequest.prototype;
@@ -28,86 +30,55 @@
     if (typeof browser.runtime.onSyncMessage !== "object") {
       // Background Script side
 
-      let pending = new Map();
-      if (MOZILLA) {
-        // we don't care this is async, as long as it get called before the
-        // sync XHR (we are not interested in the response on the content side)
-        browser.runtime.onMessage.addListener((m, sender) => {
-          let wrapper = m.__syncMessage__;
-          if (!wrapper) return;
-          let {id} = wrapper;
-          pending.set(id, wrapper);
-          wrapper.result = Promise.resolve(notifyListeners(JSON.stringify(wrapper.payload), sender));
-          return Promise.resolve(null);
-        });
-      }
+      const pending = new Map();
 
-      let tabUrlCache = new Map();
-      browser.tabs.onRemoved.addListener(tab => {
-        tabUrlCache.delete(tab.id);
+      // we don't care this is async, as long as it get called before the
+      // sync XHR (we are not interested in the response on the content side)
+      browser.runtime.onMessage.addListener((m, sender) => {
+        let wrapper = m.__syncMessage__;
+        if (!wrapper) return;
+        let {id} = wrapper;
+        pending.set(id, wrapper);
+        wrapper.result = Promise.resolve(notifyListeners(JSON.stringify(wrapper.payload), sender));
+        return Promise.resolve(null);
       });
 
-      let asyncResults = new Map();
-      let CANCEL = {cancel: true};
-      let {TAB_ID_NONE} = browser.tabs;
-
+      const asyncResults = new Map();
+      const CANCEL = {cancel: true};
 
       let onBeforeRequest = request => { try {
         let {url, tabId} = request;
         let params = new URLSearchParams(url.split("?")[1]);
         let msgId = params.get("id");
+
         if (asyncResults.has(msgId)) {
           return asyncRet(msgId);
         }
-        let msg = params.get("msg");
 
-        if (MOZILLA || tabId === TAB_ID_NONE) {
-          // this shoud be a mozilla suspension request
-          if (pending.has(msgId)) {
-            let wrapper = pending.get(msgId);
-            pending.delete(msgId);
-            return (async () => {
-              try {
-                return ret({payload: (await wrapper.result)});
-              } catch (e) {
-                return ret({error: { message: e.message, stack: e.stack }});
-              }
-            })()
-          }
-          return CANCEL; // otherwise, bail
+        console.debug(`PENDING ${msgId}: ${JSON.stringify(pending.get(msgId))}`); // DEV_ONLY
+        if (!pending.has(msgId)) {
+          return; // not a valid pending request, bail silently
         }
-        // CHROME from now on
-        let documentUrl = request.initiator || params.get("url");
-        let {frameAncestors, frameId} = request;
-        let isTop = frameId === 0 || !!params.get("top");
-        let tabUrl = frameAncestors && frameAncestors.length
-          && frameAncestors[frameAncestors.length - 1].url;
 
-        if (!tabUrl) {
-          if (isTop) {
-            tabUrlCache.set(tabId, tabUrl = documentUrl);
-          } else {
-            tabUrl = tabUrlCache.get(tabId);
-          }
-        }
-        let sender = {
-          tab: {
-            id: tabId,
-            url: tabUrl
-          },
-          frameId,
-          url: documentUrl,
-          timeStamp: Date.now()
-        };
+        const wrapper = pending.get(msgId);
 
-        if (!(msg !== null && sender)) {
-          return CANCEL;
+        if (MOZILLA) {
+          // this should be a mozilla suspension request
+          pending.delete(msgId);
+          return (async () => {
+            try {
+              return ret({payload: (await wrapper.result)});
+            } catch (e) {
+              return ret({error: { message: e.message, stack: e.stack }});
+            }
+          })()
         }
-        let result = Promise.resolve(notifyListeners(msg, sender));
+
+        // CHROMIUM from now on
         // On Chromium, if the promise is not resolved yet,
         // we redirect the XHR to the same URL (hence same msgId)
         // while the result get cached for asynchronous retrieval
-        result.then(r => storeAsyncRet(msgId, r));
+        wrapper.result.then(r => storeAsyncRet(msgId, r));
         return asyncResults.has(msgId)
         ? asyncRet(msgId) // promise was already resolved
         : {redirectUrl: url.replace(
@@ -186,6 +157,7 @@
         let more = chunks.length;
         if (more === 0) {
           asyncResults.delete(msgId);
+          pending.delete(msgId);
         }
         return ret({chunk, more});
       };
@@ -258,24 +230,15 @@
       let msgId = `${uuid()},${docUrl}`;
       let url = `${ENDPOINT_PREFIX}id=${encodeURIComponent(msgId)}` +
         `&url=${encodeURIComponent(docUrl)}`;
-      if (window.top === window) {
-        // we add top URL information because Chromium doesn't know anything
-        // about frameAncestors
-        url += "&top=true";
-      }
 
-      if (MOZILLA) {
-        // on Firefox we first need to send an async message telling the
-        // background script about the tab ID, which does not get sent
-        // with "privileged" XHR
-        browser.runtime.sendMessage(
-          {__syncMessage__: {id: msgId, payload: msg}}
-        );
-      }
-      // then we send the payload using a privileged XHR, which is not subject
-      // to CORS but unfortunately doesn't carry any tab id except on Chromium
+      // We first need to send an async message with both the payload
+      // and "trusted" sender metadata, along with an unique msgId to
+      // reconcile with in the retrieval phase via synchronous XHR
+      browser.runtime.sendMessage(
+        {__syncMessage__: {id: msgId, payload: msg}}
+      );
 
-      url += `&msg=${encodeURIComponent(JSON.stringify(msg))}`; // adding the payload
+      // Now go retrieve the result!
       let r = new XMLHttpRequest();
       let result;
       let chunks = [];
@@ -300,6 +263,7 @@
         }
         break;
       }
+      console.debug(`SyncMessage ${msgId}, state ${document.readyState}, result: ${JSON.stringify(result)}`); // DEV_ONLY
       if (callback) callback(result);
       return result;
     };

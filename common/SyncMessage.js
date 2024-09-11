@@ -224,7 +224,6 @@
     }
   } else if (typeof browser.runtime.sendSyncMessage !== "function") {
     // Content Script side
-    let uuid = () => (Math.random() * Date.now()).toString(16);
     let docUrl = document.URL;
     browser.runtime.sendSyncMessage = (msg, callback) => {
       let msgId = `${uuid()},${docUrl}`;

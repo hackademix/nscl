@@ -139,11 +139,13 @@ var patchWorkers = (() => {
               url = url.href;
               let workers = mustDeferWorker(url, (target.wrappedJSObject || target) === SharedWorker);
               if (workers) {
-                args[0] = "data:"
-                let worker = construct(target, args);
-                let proxy = proxify(worker, propHandler);
-                workers.add(proxy);
-                let shadow = {url};
+                const debugSrc = `console.debug("Shadowing worker ${url} with " + location.href);`
+                const argsCopy = [... args];
+                argsCopy[0] = createObjectURL(new Blob([debugSrc], {type: "application/javascript"}))
+                const worker = construct(target, argsCopy);
+                const proxy = proxify(worker, propHandler);
+                workers.add({proxy, args});
+                const shadow = {url};
                 shadows.set(proxy, shadow);
                 if (worker.port) {
                   shadows.set(shadow.port = proxify(worker.port, propHandler), {worker});
@@ -210,9 +212,11 @@ var patchWorkers = (() => {
               let workers = mustDeferWorker(url);
               if (workers) {
                 return new Promise(resolve => {
-                  workers.add(new Registration(() => {
-                    resolve(register())
-                  }));
+                  workers.add({
+                    proxy: new Registration(() => {
+                      resolve(register())
+                    })
+                  });
                 });
               }
             } catch(e) {
@@ -245,12 +249,15 @@ var patchWorkers = (() => {
           if (type !== "urlPatched") return;
           let workers = workersByUrl.get(url);
           if (!workers) return;
-          for (let worker of workers) {
-            if (worker instanceof Registration) {
-              worker.complete();
+          for (let {proxy, args} of workers) {
+            if (proxy instanceof Registration) {
+              proxy.complete();
               continue;
             }
-            finalizeShadow(worker, construct(proxy2Object.get(worker).constructor, [url]));
+            const worker = proxy2Object.get(proxy);
+            if (worker) {
+              finalizeShadow(proxy, construct(worker.constructor, args));
+            }
           }
           workersByUrl.delete(url);
         }

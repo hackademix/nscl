@@ -342,14 +342,22 @@ function patchWindow(patchingCallback, env = {}) {
     let patchHandler = {
       apply(target, thisArg, args) {
         let ret = Reflect.apply(target, thisArg, args);
-        thisArg = thisArg && xray.wrap(thisArg);
-        if (thisArg) {
-          thisArg = xray.wrap(thisArg);
-          if ((thisArg.ownerDocument || thisArg) === xrayWin.document) {
-            patchAll();
+        const wrapped = thisArg && xray.wrap(thisArg);
+        if (wrapped) {
+          try {
+            if ((wrapped.ownerDocument || wrapped) === xrayWin.document) {
+              patchAll();
+            }
+          } catch (e) {
+            console.error("Can't propagate patches (likely SOP violation).", e, thisArg, wrapped, location); // DEV_ONLY
           }
         }
-        return ret ? xray.forPage(ret, win) : ret;
+        try {
+          return ret ? xray.forPage(ret, win) : ret;
+        } catch (e) {
+          console.error("Can't wrap return value.", e, thisArg, target, args, ret, location); // DEV_ONLY
+        }
+        return ret;
       }
     };
 

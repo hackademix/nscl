@@ -105,12 +105,12 @@ ns.on("capabilities", event => {
     const bc = new BroadcastChannel(channelID);
     bc.onmessage = notifyWebGL;
     const workersPatch = () => {
-      console.debug(`Installing WebGLHook on ${globalThis} at ${location}.`); // DEV_ONLY
+      console.debug("Installing WebGLHook", self); // DEV_ONLY
       const bc = new BroadcastChannel(channelID);
       const getContext = OffscreenCanvas.prototype.getContext;
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {
-          console.debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${globalThis}`); // DEV_ONLY
+          console.debug(`WebGLHook called from ${new Error().stack}`, thisArg, globalThis); // DEV_ONLY
           if (/webgl/i.test(argumentsList[0])) {
             bc.postMessage({});
             return null;

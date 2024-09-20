@@ -101,7 +101,7 @@ ns.on("capabilities", event => {
   }
 
   try {
-    const channelID = `webglHook:{uuid()}`;
+    const channelID = `webglHook:${uuid()}`;
     const bc = new BroadcastChannel(channelID);
     bc.onmessage = notifyWebGL;
     const workersPatch = () => {

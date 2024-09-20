@@ -46,13 +46,24 @@
     if (frameId === 0) cleanup(tabId);
   });
   // ensure the patches run only in Worker scopes
-  let wrap = patch => `(() => {
+  const debugMonitor = `
+    for (let et of ['message', 'error', 'messageerror']) {
+      addEventListener(et, ev => {
+        console.debug("%s Event in patched worker", ev.type, ev, JSON.stringify(ev.data));
+      }, true);
+    }`;
+  let wrap = code => `(() => {
     try {
       if (!(self instanceof WorkerGlobalScope)) return false;
     } catch(e) {
       return false;
     }
-    ${patch};
+    ${debugMonitor} // DEV_ONLY
+    try {
+      ${code};
+    } catch(e) {
+      console.error("Error executing worker patch", e);
+    }
     return true;
   })();
   `;
@@ -124,7 +135,7 @@
       });
     };
 
-    let dbg = {};
+    const dbg = {};
     for (let [key, prop] of Object.entries(chrome.debugger)) {
       if (typeof prop === "function") dbg[key] = makeAsync(chrome.debugger, key);
     }
@@ -140,13 +151,13 @@
       let {tabId} = source;
       let dbgInfo = await debugging.get(tabId);
       if (!dbgInfo || method === "Debugger.scriptParsed") return; // shouldn't happen
-      console.debug("Debugger event", method, params);
+      console.debug("Debugger event", method, params, source); // DEV_ONLY
 
       switch(method) {
         case "Debugger.scriptFailedToParse":
           return await dbgInfo.dispose(params.url);
         case "Target.attachedToTarget": {
-          return dbgInfo.handleWorker(params);
+          return dbgInfo.handleWorker(source, params);
         }
       }
     });
@@ -158,53 +169,71 @@
 
     // Section 2, run from now on
 
+    // see https://chromedevtools.github.io/devtools-protocol/tot/Target/#type-TargetFilter
+    // and https://source.chromium.org/chromium/chromium/src/+/main:content/browser/devtools/devtools_agent_host_impl.cc?ss=chromium&q=f:devtools%20-f:out%20%22::kTypeTab%5B%5D%22
+    const targetFilter = ["worker", "shared_worker", "service_worker"].map(type => ({type, exclude: false}));
+
     return await (init = async (tabId, url, {patch}) => {
 
-      let target = {tabId};
+      const dbgTarget = {tabId};
       let dbgInfo = await debugging.get(tabId);
       if (!dbgInfo) {
-        let cmd = async (command, params) => await dbg.sendCommand(target, command.includes(".") ? command : `Debugger.${command}`, params);
-        let startingDebugger = (async () => {
-          let targets = await dbg.getTargets();
-          if (!(targets.some(t => t.attached && t.tabId === tabId))) {
-            console.debug("Attaching debugger to", tabId);
+        const cmd = async (command, params) => await dbg.sendCommand(dbgTarget, command, params);
+        const startingDebugger = (async () => {
+          if (!((await dbg.getTargets()).some(t => t.attached && t.tabId === tabId))) {
+            console.debug("Attaching debugger to", tabId); // DEV_ONLY
             try {
-              await dbg.attach(target, "1.3");
+              await dbg.attach(dbgTarget, "1.3");
             } catch (e) {
               // might just be because we're already attached
               console.error(e);
             }
           }
-          await cmd("enable");
-          await cmd("Target.setAutoAttach", {autoAttach: true, waitForDebuggerOnStart: true, flatten: true});
-
+          await cmd("Debugger.enable");
+          await cmd("Target.setAutoAttach", {
+            autoAttach: true,
+            waitForDebuggerOnStart: true,
+            flatten: true,
+            targetFilter,
+          });
+          console.debug("NoScript's patchWorker started debugger on ", tabId);
           return {
-            dbg, cmd, target,
             patches: new Map(),
-            async handleWorker({sessionId, targetInfo}) {
-              let {url, type, targetId, waitingForDebugger, attached} = targetInfo;
-              let {cmd, dbg, patches} = this;
-              let worker = {targetId};
+            async handleWorker(source, {sessionId, targetInfo, waitingForDebugger}) {
+              const {url, type} = targetInfo;
+              const {patches} = this;
+              const session = {...source, sessionId};
               try {
-                await dbg.attach(worker, "1.3");
-                if (!patches.has(url) || type !== "worker") return;
+                if (!(patches.has(url) && /worker$/.test(type))) return;
                 let expression = wrap(patches.get(url).code);
-                console.log("Patching", url, expression);
+                console.debug("Patching %s with ", url, expression); // DEV_ONLY
                 try {
-                  await dbg.sendCommand(worker, "Runtime.evaluate", {expression, silent: true, allowUnsafeEvalBlockedByCSP: true});
+                  await dbg.sendCommand(session, "Runtime.evaluate", {
+                    expression,
+                    silent: true,
+                    allowUnsafeEvalBlockedByCSP: true,
+                  });
                 } catch (e) {
                   console.error("Runtime.evaluate failed", e);
-                } finally {
-                  this.dispose(url);
                 }
               } catch (e) {
                 console.error("Attaching failed", e);
               } finally {
-                if (waitingForDebugger || attached) {
-                  await dbg.sendCommand(worker, "Runtime.runIfWaitingForDebugger");
-                  await dbg.detach(worker);
+                if (waitingForDebugger) {
+                  try {
+                    await dbg.sendCommand(session, "Runtime.runIfWaitingForDebugger");
+                  } catch (e) {
+                    console.error(e);
+                  }
+                } else {
+                  try {
+                    await dbg.sendCommand(session, "Target.detachFromTarget", {sessionId});
+                  } catch (e) {
+                    console.error(e);
+                  }
                 }
               }
+              this.dispose(url);
             },
             patch(url, code) {
               let patch = this.patches.get(url);
@@ -223,18 +252,23 @@
               if (patches.has(url) && patches.get(url).count-- <= 1) {
                 patches.delete(url);
                 if (patches.size === 0) {
-                  console.debug("Detaching debugger from tab", this.target.tabId);
+                  console.debug("Detaching debugger from tab", dbgTarget.tabId); // DEV_ONLY
                   try {
-                    await cmd("Target.setAutoAttach", {autoAttach: false});
+                    await cmd("Target.setAutoAttach", {autoAttach: false, waitForDebuggerOnStart: false});
                   } catch (e) {
                     console.error(e);
                   }
                   try {
-                    await this.dbg.detach(this.target);
+                    await cmd("Debugger.disable");
                   } catch (e) {
                     console.error(e);
                   }
-                  debugging.delete(this.target.tabId);
+                  try {
+                    await dbg.detach(dbgTarget);
+                  } catch (e) {
+                    console.error(e);
+                  }
+                  debugging.delete(dbgTarget.tabId);
                 }
               }
             }

@@ -67,7 +67,9 @@ var patchWorkers = (() => {
                 (sw.props || (sw.props = {}))[prop] = value;
               }
             }
-            return Reflect.set(xray.unwrap(target), prop, value);
+            const unwrappedTarget = xray.unwrap(target);
+            console.debug(`Setting property ${prop} = %o on %o (unwrapped %o)`, value, target, unwrappedTarget); // DEV_ONLY
+            return Reflect.set(unwrappedTarget, prop, value);
           },
           get(target, prop, receiver) {
             let sw = shadows.get(receiver);
@@ -77,9 +79,11 @@ var patchWorkers = (() => {
               if (obj instanceof SharedWorker && prop === "port") {
                 return sw.port;
               }
-              if (sw.finalObject) obj = xray.unwrap(sw.finalObject);
+              obj = sw.finalObject ? xray.unwrap(sw.finalObject) : sw.props || obj;
             }
-            return Reflect.get(obj, prop);
+            const value = Reflect.get(obj, prop);
+            console.debug(`Getting property ${prop} = %o from %o`, value, obj); // DEV_ONLY
+            return value;
           }
         };
 
@@ -141,7 +145,7 @@ var patchWorkers = (() => {
               if (workers) {
                 const debugSrc = `console.debug("Shadowing worker ${url} with " + location.href);`
                 const argsCopy = [... args];
-                argsCopy[0] = createObjectURL(new Blob([debugSrc], {type: "application/javascript"}))
+                argsCopy[0] = createObjectURL(new Blob([debugSrc], {type: "application/javascript"}));
                 const worker = construct(target, argsCopy);
                 const proxy = proxify(worker, propHandler);
                 workers.add({proxy, args});
@@ -168,8 +172,13 @@ var patchWorkers = (() => {
             let sw = shadows.get(thisArg);
             args = xray.unwrap(args);
             if (!sw) return Reflect.apply(target, thisArg, args);
-            if (sw.finalObject) return Reflect.apply(target, sw.finalObject, args);
+            if (sw.finalObject) {
+              const ret = Reflect.apply(target, sw.finalObject, args);
+              console.debug(`Patched worker shadow passthru %o.%o(%o)\nret: %o`, sw, target, args, ret); // DEV_ONLY
+              return ret;
+            }
             (sw.replayCalls = sw.replayCalls || []).push({target, args});
+            console.debug(`Patched worker storing replay %o.%o(%o) for replay.`, sw, target, args); // DEV_ONLY
           }
         }
         try {
@@ -229,15 +238,28 @@ var patchWorkers = (() => {
         function finalizeShadow(dummy, finalObject) {
           let sw = shadows.get(dummy);
           if (!sw) return;
+          console.debug(`Finalizing %o with %o`, sw, finalObject); // DEV_ONLY
           sw.finalObject = sw.props ? Object.assign(finalObject, sw.props) : finalObject;
           delete sw.props;
           if (sw.port && finalObject.port) {
             finalizeShadow(sw.port, finalObject.port);
           }
+          let DEV
+            = true  // DEV_ONLY
+          ;
+          if (DEV && typeof(finalObject.addEventListener) === "function") {
+              for (let et of ['message', 'error', 'messageerror']) {
+                finalObject.addEventListener(et, ev => {
+                  console.debug("Event from patched worker", ev);
+                }, true);
+              }
+          }
+
           if (!sw.replayCalls) return;
           for (let {target, args} of sw.replayCalls) {
             try {
-              Reflect.apply(target, finalObject, args);
+              const ret = Reflect.apply(target, finalObject, args);
+              console.debug(`Patched worker shadow replay %o.%o(%o)\nret: %o`, sw, target, args, ret); // DEV_ONLY
             } catch(e) {
               error(e);
             }

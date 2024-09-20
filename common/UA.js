@@ -41,5 +41,6 @@
   var UA = {
     isMozilla,
     mobile,
+    DEV: true, // DEV_ONLY
   };
 }

@@ -79,7 +79,7 @@ var patchWorkers = (() => {
               if (obj instanceof SharedWorker && prop === "port") {
                 return sw.port;
               }
-              obj = sw.finalObject ? xray.unwrap(sw.finalObject) : sw.props || obj;
+              if (sw.finalObject) obj = xray.unwrap(sw.finalObject);
             }
             const value = Reflect.get(obj, prop);
             console.debug(`Getting property ${prop} = %o from %o`, value, obj); // DEV_ONLY

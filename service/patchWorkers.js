@@ -102,9 +102,14 @@
       if (!(patchInfo && patchInfo.urls.has(url))) return;
 
       let filter = browser.webRequest.filterResponseData(requestId);
-      filter.onstart = event => {
+      filter.onstart = () => {
         filter.write(new TextEncoder().encode(wrap(patchInfo.patch)));
-        filter.disconnect();
+      };
+      filter.ondata = e => {
+        filter.write(e.data);
+      };
+      filter.onstop = () => {
+        filter.close();
       };
     }, {
       urls: ["<all_urls>"],

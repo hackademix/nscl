@@ -19,6 +19,8 @@
  */
 
 // depends on nscl/content/patchWindow.js
+// depends on nscl/common/SyncMessage.js
+
 "use strict";
 var patchWorkers = (() => {
   let patches = new Set();
@@ -32,72 +34,25 @@ var patchWorkers = (() => {
     if (patches.size === 0) {
       let modifyWindow = (w, {port, xray}) => {
 
-        let {window} = xray;
-
-        let proxy2Object = new WeakMap();
-        let shadows = new WeakMap();
-        let workersByUrl = new Map();
+        const {window} = xray;
 
         // cache and "protect" some "sensitive" built-ins we'll need later
-        let { ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
+        const { ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
               Proxy, Promise } = window;
-        let { SharedWorker, encodeURIComponent } = w;
+        const { SharedWorker, encodeURIComponent } = w;
 
-        let createObjectURL = URL.createObjectURL.bind(URL);
-        let construct = Reflect.construct.bind(Reflect);
-        let error = console.error.bind(console);
+        const error = console.error.bind(console);
 
+        const createObjectURL = URL.createObjectURL.bind(URL);
+        const construct = Reflect.construct.bind(Reflect);
 
-        let proxify = (obj, handler) => {
-            let proxy = new Proxy(xray.unwrap(obj), xray.forPage(handler));
-            proxy2Object.set(proxy, obj);
-            return proxy;
-        };
+        const proxify = (obj, handler) => new Proxy(xray.unwrap(obj), xray.forPage(handler));
 
-        // with this handler we can forward property access as soon as deferred
-        // objects are ready, using dummies in the meanwhile, for
-        // Workers, SharedWorkers and SharedWorker.port
-        let propHandler = {
-          set(target, prop, value, receiver) {
-            let sw = shadows.get(receiver);
-            if (sw) {
-              if (sw.finalObject) {
-                target = sw.finalObject;
-              } else {
-                (sw.props || (sw.props = {}))[prop] = value;
-              }
-            }
-            const unwrappedTarget = xray.unwrap(target);
-            console.debug(`Setting property ${prop} = %o on %o (unwrapped %o)`, value, target, unwrappedTarget); // DEV_ONLY
-            return Reflect.set(unwrappedTarget, prop, value);
-          },
-          get(target, prop, receiver) {
-            let sw = shadows.get(receiver);
-            let obj = xray.unwrap(target);
-
-            if (sw) {
-              if (obj instanceof SharedWorker && prop === "port") {
-                return sw.port;
-              }
-              if (sw.finalObject) obj = xray.unwrap(sw.finalObject);
-            }
-            const value = Reflect.get(obj, prop);
-            console.debug(`Getting property ${prop} = %o from %o`, value, obj); // DEV_ONLY
-            return value;
-          }
-        };
-
-        function mustDeferWorker(url, isServiceOrShared) {
-          if (!port.postMessage({type: "patchUrl", url, isServiceOrShared})) {
-            let workers = workersByUrl.get(url);
-            if (!workers) workersByUrl.set(url, workers = new Set());
-            return workers;
-          }
-          return null;
-        }
+        const patchRemoteWorkerScript = (url, isServiceOrShared) =>
+          port.postMessage({type: "patchUrl", url, isServiceOrShared});
 
         // patch Worker & SharedWorker
-        let workerHandler = {
+        const workerHandler = {
           construct(target, args) {
             // string coercion may have side effects, let's clear it up immediately
             args[0] = `${args[0]}`;
@@ -110,6 +65,8 @@ var patchWorkers = (() => {
             }
 
             if (/^(?:data|blob):/.test(url.protocol)) {
+
+              // Inline patching
 
               let content = () => {
                 try {
@@ -140,72 +97,21 @@ var patchWorkers = (() => {
               : createObjectURL(new Blob([patch, ";\n", content()], {type: "application/javascript"}));
 
             } else {
-              url = url.href;
-              let workers = mustDeferWorker(url, (target.wrappedJSObject || target) === SharedWorker);
-              if (workers) {
-                const debugSrc = `console.debug("Shadowing worker ${url} with " + location.href);`
-                const argsCopy = [... args];
-                argsCopy[0] = createObjectURL(new Blob([debugSrc], {type: "application/javascript"}));
-                const worker = construct(target, argsCopy);
-                const proxy = proxify(worker, propHandler);
-                workers.add({proxy, args});
-                const shadow = {url};
-                shadows.set(proxy, shadow);
-                if (worker.port) {
-                  shadows.set(shadow.port = proxify(worker.port, propHandler), {worker});
-                }
-                return proxy;
-              }
+              // remote patching
+              patchRemoteWorkerScript(url.href, (target.wrappedJSObject || target) === SharedWorker);
+              console.debug("Patching remote worker", url.href); // DEV_ONLY
             }
             return construct(target, args);
           }
         };
+
+        // Intercept worker constructors
         for (let c of ["Worker", "SharedWorker"]) {
           w[c] = proxify(window[c], workerHandler);
         }
 
-        // patch Worker & SharedWorker.post to buffer postMessage() calls
-        // and EventTarget to replay listeners addition/removal
-        // until deferred objects are finally ready
-        let replayCallsHandler = {
-          apply(target, thisArg, args) {
-            let sw = shadows.get(thisArg);
-            args = xray.unwrap(args);
-            if (!sw) return Reflect.apply(target, thisArg, args);
-            if (sw.finalObject) {
-              const ret = Reflect.apply(target, sw.finalObject, args);
-              console.debug(`Patched worker shadow passthru %o.%o(%o)\nret: %o`, sw, target, args, ret); // DEV_ONLY
-              return ret;
-            }
-            (sw.replayCalls = sw.replayCalls || []).push({target, args});
-            console.debug(`Patched worker storing replay %o.%o(%o) for replay.`, sw, target, args); // DEV_ONLY
-          }
-        }
-        try {
-          let replayMethods = new Map();
-          let eventTargetMethods = Object.keys(w.EventTarget.prototype); // ["addEventListener", "removeEventListener", "dispatchEvent"]
-          for (let proto of [w.EventTarget.prototype, w.Worker.prototype.__proto__, w.SharedWorker.prototype.__proto__]) {
-            replayMethods.set(proto, eventTargetMethods);
-          }
-          replayMethods.set(w.Worker.prototype, ["postMessage", "terminate"]);
-          replayMethods.set(w.MessagePort.prototype, ["postMessage", "start", "close"]);
-
-          for (let [proto, methods] of replayMethods.entries()) {
-            for (let method of methods) {
-              let des = Object.getOwnPropertyDescriptor(proto, method);
-              des.value = xray.forPage(proxify(des.value, replayCallsHandler));
-              Object.defineProperty(proto, method, des);
-            }
-          }
-        } catch (e) {
-          error(e);
-        }
-        let origin = window.location.origin;
-        class Registration {
-          constructor(complete) {
-            this.complete = complete;
-          }
-        }
+        // Intercept service worker registration
+        const origin = window.location.origin;
         if (ServiceWorkerContainer) xray.unwrap(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
           apply(target, thisArg, args) {
             let register = () => Reflect.apply(target, thisArg, args);
@@ -218,71 +124,13 @@ var patchWorkers = (() => {
             try {
               let url = new URL(args[0], document.baseURI);
               if (url.origin !== origin) throw new Error("ServiceWorker origin mismatch (${url})");
-              let workers = mustDeferWorker(url);
-              if (workers) {
-                return new Promise(resolve => {
-                  workers.add({
-                    proxy: new Registration(() => {
-                      resolve(register())
-                    })
-                  });
-                });
-              }
+              patchRemoteWorkerScript(url);
             } catch(e) {
               error(e);
             }
             return register();
           }
         });
-
-        function finalizeShadow(dummy, finalObject) {
-          let sw = shadows.get(dummy);
-          if (!sw) return;
-          console.debug(`Finalizing %o with %o`, sw, finalObject); // DEV_ONLY
-          sw.finalObject = sw.props ? Object.assign(finalObject, sw.props) : finalObject;
-          delete sw.props;
-          if (sw.port && finalObject.port) {
-            finalizeShadow(sw.port, finalObject.port);
-          }
-          let DEV
-            = true  // DEV_ONLY
-          ;
-          if (DEV && typeof(finalObject.addEventListener) === "function") {
-              for (let et of ['message', 'error', 'messageerror']) {
-                finalObject.addEventListener(et, ev => {
-                  console.debug("Event from patched worker", ev);
-                }, true);
-              }
-          }
-
-          if (!sw.replayCalls) return;
-          for (let {target, args} of sw.replayCalls) {
-            try {
-              const ret = Reflect.apply(target, finalObject, args);
-              console.debug(`Patched worker shadow replay %o.%o(%o)\nret: %o`, sw, target, args, ret); // DEV_ONLY
-            } catch(e) {
-              error(e);
-            }
-          }
-          delete sw.replayCalls;
-        }
-
-        port.onMessage = ({type, url}) => {
-          if (type !== "urlPatched") return;
-          let workers = workersByUrl.get(url);
-          if (!workers) return;
-          for (let {proxy, args} of workers) {
-            if (proxy instanceof Registration) {
-              proxy.complete();
-              continue;
-            }
-            const worker = proxy2Object.get(proxy);
-            if (worker) {
-              finalizeShadow(proxy, construct(worker.constructor, args));
-            }
-          }
-          workersByUrl.delete(url);
-        }
       }
 
       let port = patchWindow(modifyWindow);
@@ -295,14 +143,14 @@ var patchWorkers = (() => {
             let {url, isServiceOrShared} = msg;
             url = `${url}`;
             if (urls.has(url) && !isServiceOrShared) {
-              return true;
+              return false;
             }
-            browser.runtime.sendMessage({
+
+            browser.runtime.sendSyncMessage({
               __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
-            }).then(() => {
-              urls.add(url);
-              port.postMessage({type: "urlPatched", url});
             });
+            urls.add(url);
+            return true;
           }
         }
       };

@@ -18,6 +18,8 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// depends on nscl/common/SyncMessage.js
+
 "use strict";
 {
   let patchesByTab = new Map();
@@ -68,7 +70,7 @@
   })();
   `;
 
-  browser.runtime.onMessage.addListener(({__patchWorkers__}, {tab, url: documentUrl}) => {
+  browser.runtime.onSyncMessage.addListener(({__patchWorkers__}, {tab, url: documentUrl}) => {
     if (!__patchWorkers__) return;
     try {
       let {url, patch, isServiceOrShared} = __patchWorkers__;

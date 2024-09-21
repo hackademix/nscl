@@ -165,9 +165,9 @@
       const CHUNK_SIZE = 500000; // Work around any browser-dependent URL limit
       let storeAsyncRet = (msgId, r) => {
         r = JSON.stringify(r);
-        let len = r.length;
-        let chunksCount = Math.ceil(len / CHUNK_SIZE);
-        let chunks = [];
+        const len = r === undefined ? 0 : r.length;
+        const chunksCount = Math.ceil(len / CHUNK_SIZE);
+        const chunks = [];
         for (let j = 0; j < chunksCount; j++) {
           chunks.push(r.substr(j * CHUNK_SIZE, CHUNK_SIZE));
         }

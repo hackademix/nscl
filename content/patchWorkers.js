@@ -23,8 +23,32 @@
 
 "use strict";
 var patchWorkers = (() => {
-  let patches = new Set();
-  let urls = new Set();
+  const patches = new Set();
+
+  const failSafe = (() => {
+    const urls = new Map();
+    const getCallbacks = url => {
+      let ret = urls.get(url);
+      if (!ret) {
+        urls.set(ret = new Set());
+      };
+      return ret;
+    };
+    return {
+      add(url, cancel) {
+        getCallbacks(url).add(cancel);
+      },
+      cancel(url) {
+        for (let c of [...getCallbacks(url)]) {
+          try {
+            c();
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      },
+    };
+  })();
 
   let stringify = f => typeof f === "function" ? `(${f})();\n` : `{${f}}\n`;
 
@@ -71,6 +95,7 @@ var patchWorkers = (() => {
 
         const createObjectURL = URL.createObjectURL.bind(URL);
         const construct = Reflect.construct.bind(Reflect);
+        const apply = Reflect.apply.bind(Reflect);
 
         const proxify = (obj, handler) => new Proxy(xray.unwrap(obj), xray.forPage(handler));
 
@@ -78,6 +103,7 @@ var patchWorkers = (() => {
           port.postMessage({type: "patchUrl", url, isServiceOrShared});
 
         // patch Worker & SharedWorker
+        const terminate = Worker.prototype.terminate;
         const workerHandler = {
           construct(target, args) {
             // string coercion may have side effects, let's clear it up immediately
@@ -121,13 +147,15 @@ var patchWorkers = (() => {
               ${patch}`;
               args[0] = url.protocol === "data:" ?`data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
               : createObjectURL(new Blob([patch, ";\n", content()], {type: "application/javascript"}));
-
-            } else {
-              // remote patching
-              patchRemoteWorkerScript(url.href, (target.wrappedJSObject || target) === SharedWorker);
-              console.debug("Patching remote worker", url.href); // DEV_ONLY
+              return construct(target, args);
             }
-            return construct(target, args);
+            // remote patching
+            url = url.href;
+            patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === SharedWorker);
+            console.debug("Patching remote worker", url); // DEV_ONLY
+            const worker = construct(target, args)
+            failSafe.add(url, () => apply(terminate, worker, []));
+            return worker;
           }
         };
 
@@ -138,25 +166,35 @@ var patchWorkers = (() => {
 
         // Intercept service worker registration
         const origin = window.location.origin;
-        if (ServiceWorkerContainer) xray.unwrap(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
-          apply(target, thisArg, args) {
-            let register = () => Reflect.apply(target, thisArg, args);
-            try {
-              // handle string coercion and its potential side effects right away
-              args[0] = `${args[0]}`;
-            } catch (e) {
-              return Promise.reject(e);
+        if (ServiceWorkerContainer) {
+          const {unregister, update} = ServiceWorkerRegistration.prototype;
+          xray.unwrap(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
+            apply(target, thisArg, args) {
+              console.debug("Patching service worker", args); // DEV_ONLY
+              try {
+                // handle string coercion and its potential side effects right away
+                args[0] = `${args[0]}`;
+              } catch (e) {
+                return Promise.reject(e);
+              }
+              let url;
+              try {
+                url = new URL(args[0], document.baseURI);
+                if (url.origin !== origin) throw new Error("ServiceWorker origin mismatch (${url})");
+                url = url.href;
+                patchRemoteWorkerScript(url, /* isServiceOrShared */ true);
+              } catch(e) {
+                error(e);
+              }
+              const registration = apply(target, thisArg, args);
+              failSafe.add(url, () => {
+                registration.then(r => apply(unregister, r, []));
+              });
+              registration.then(r => apply(update, r, []));
+              return registration;
             }
-            try {
-              let url = new URL(args[0], document.baseURI);
-              if (url.origin !== origin) throw new Error("ServiceWorker origin mismatch (${url})");
-              patchRemoteWorkerScript(url);
-            } catch(e) {
-              error(e);
-            }
-            return register();
-          }
-        });
+          });
+        }
       }
 
       let port = patchWindow(modifyWindow);
@@ -168,15 +206,12 @@ var patchWorkers = (() => {
           {
             let {url, isServiceOrShared} = msg;
             url = `${url}`;
-            if (urls.has(url) && !isServiceOrShared) {
-              return false;
-            }
-
-            browser.runtime.sendSyncMessage({
+            browser.runtime.sendMessage({
               __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
+            }).then(r => {}, e => {
+              // terminate / unregister workers which could not be patched
+              failSafe.cancel(url);
             });
-            urls.add(url);
-            return true;
           }
         }
       };

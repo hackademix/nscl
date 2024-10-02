@@ -177,6 +177,9 @@ var patchWorkers = (() => {
               } catch (e) {
                 return Promise.reject(e);
               }
+              if (args[1] && args[1].updateViaCache === "all") {
+                args[1].updateViaCache = "imports";
+              }
               let url;
               try {
                 url = new URL(args[0], document.baseURI);

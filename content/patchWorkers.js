@@ -27,7 +27,33 @@ var patchWorkers = (() => {
   let urls = new Set();
 
   let stringify = f => typeof f === "function" ? `(${f})();\n` : `{${f}}\n`;
-  let joinPatches = () => [...patches].join("\n");
+
+  const debugMonitor = `
+    for (let et of ['message', 'error', 'messageerror']) {
+      addEventListener(et, ev => {
+        console.debug("%s Event in patched worker", ev.type, ev.data);
+      }, true);
+    }`;
+  const wrap = code => `(() => {
+    try {
+      if (!(self instanceof WorkerGlobalScope)) return false;
+    } catch(e) {
+      return false;
+    }
+
+    // preserve console from rewriting / erasure
+    const console = Object.fromEntries(Object.entries(self.console).map(([n, v]) => v.bind ? [n, v.bind(self.console)] : [n,v]));
+
+    ${debugMonitor} // DEV_ONLY
+    try {
+      ${code};
+    } catch(e) {
+      console.error("Error executing worker patch", e);
+    }
+    return true;
+  })();
+  `;
+  const joinPatches = () => wrap([...patches].join("\n"));
 
   return patch => {
 

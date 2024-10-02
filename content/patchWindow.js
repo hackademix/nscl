@@ -211,6 +211,8 @@ function patchWindow(patchingCallback, env = {}) {
       let exportFunction = ${exportFunction};
       let env = ${JSON.stringify(env)};
       let portId = ${JSON.stringify(portId)};
+      const console = Object.fromEntries(Object.entries(self.console).map(([n, v]) => v.bind ? [n, v.bind(self.console)] : [n,v]));
+
       env.port = new (${Port})("page", "extension");
       ({
         patchWindow,

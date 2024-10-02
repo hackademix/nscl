@@ -47,29 +47,6 @@
   browser.webNavigation.onCommitted.addListener(({tabId, frameId}) => {
     if (frameId === 0) cleanup(tabId);
   });
-  // ensure the patches run only in Worker scopes
-  const debugMonitor = `
-    for (let et of ['message', 'error', 'messageerror']) {
-      addEventListener(et, ev => {
-        console.debug("%s Event in patched worker", ev.type, ev, JSON.stringify(ev.data));
-      }, true);
-    }`;
-  let wrap = code => `(() => {
-    try {
-      if (!(self instanceof WorkerGlobalScope)) return false;
-    } catch(e) {
-      return false;
-    }
-    const console = self.console; // preserve from rewriting
-    ${debugMonitor} // DEV_ONLY
-    try {
-      ${code};
-    } catch(e) {
-      console.error("Error executing worker patch", e);
-    }
-    return true;
-  })();
-  `;
 
   browser.runtime.onSyncMessage.addListener(({__patchWorkers__}, {tab, url: documentUrl}) => {
     if (!__patchWorkers__) return;
@@ -104,7 +81,8 @@
 
       let filter = browser.webRequest.filterResponseData(requestId);
       filter.onstart = () => {
-        filter.write(new TextEncoder().encode(wrap(patchInfo.patch)));
+        console.debug("filter.onstart", requestId);  // DEV_ONLY REMOVEME
+        filter.write(new TextEncoder().encode(patchInfo.patch));
       };
       filter.ondata = e => {
         filter.write(e.data);
@@ -213,7 +191,7 @@
               const session = {...source, sessionId};
               try {
                 if (!(patches.has(url) && /worker$/.test(type))) return;
-                let expression = wrap(patches.get(url).code);
+                const expression = patches.get(url).code;
                 console.debug("Patching %s with ", url, expression); // DEV_ONLY
                 try {
                   await dbg.sendCommand(session, "Runtime.evaluate", {

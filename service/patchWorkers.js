@@ -60,6 +60,7 @@
     } catch(e) {
       return false;
     }
+    const console = self.console; // preserve from rewriting
     ${debugMonitor} // DEV_ONLY
     try {
       ${code};

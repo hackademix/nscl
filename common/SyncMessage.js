@@ -22,9 +22,13 @@
 
 "use strict";
 (() => {
-  let MOZILLA = self.XMLHttpRequest && "mozSystem" in self.XMLHttpRequest.prototype;
-  let ENDPOINT_ORIGIN = "https://[ff00::]";
-  let ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/nscl/${browser.runtime.getURL("syncMessage")}?`;
+  const MOZILLA = self.XMLHttpRequest && "mozSystem" in self.XMLHttpRequest.prototype;
+  const ENDPOINT_ORIGIN = "https://[ff00::]";
+  const ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/nscl/${browser.runtime.getURL("syncMessage")}?`;
+
+   // https://github.com/w3c/webappsec-permissions-policy/blob/main/permissions-policy-explainer.md#appendix-big-changes-since-this-was-called-feature-policy
+  const allowSyncXhr = policy => policy.replace(/(?:[,;]\s*)?\b(?:sync-xhr\b[^;,]*)/ig, '')
+                                      .replace(/^\s*[;,]\s*/, '');
 
   if (browser.webRequest) {
     if (typeof browser.runtime.onSyncMessage !== "object") {
@@ -47,15 +51,25 @@
       const CANCEL = {cancel: true};
 
       let onBeforeRequest = request => { try {
-        let {url, tabId} = request;
-        let params = new URLSearchParams(url.split("?")[1]);
-        let msgId = params.get("id");
+        const {url, tabId} = request;
+        const shortUrl = url.replace(ENDPOINT_PREFIX, '');
+        const params = new URLSearchParams(url.split("?")[1]);
+        const msgId = params.get("id");
+        let loop = (parseInt(params.get("loop")) || 0);
+
+        const chromeRet = resultReady => {
+          const r = resultReady
+            ? asyncRet(msgId) // promise was already resolved
+            : ret({loop});
+          console.debug("SyncMessage XHR->webRequest %s returning %o", shortUrl, r); // DEV_ONLY
+          return r;
+        };
 
         if (asyncResults.has(msgId)) {
-          return asyncRet(msgId);
+          return chromeRet(true);
         }
 
-        console.debug(`PENDING ${msgId}: ${JSON.stringify(pending.get(msgId))}`); // DEV_ONLY
+        console.debug(`PENDING ${url.replace(ENDPOINT_PREFIX, '')}: ${JSON.stringify(pending.get(msgId))}`); // DEV_ONLY
         if (!pending.has(msgId)) {
           return; // not a valid pending request, bail silently
         }
@@ -64,26 +78,23 @@
 
         if (MOZILLA) {
           // this should be a mozilla suspension request
-          pending.delete(msgId);
           return (async () => {
             try {
-              return ret({payload: (await wrapper.result)});
+              return ret(res(await wrapper.result));
             } catch (e) {
-              return ret({error: { message: e.message, stack: e.stack }});
+              return ret(err(e));
+            } finally {
+              pending.delete(msgId);
             }
-          })()
+          })();
         }
 
         // CHROMIUM from now on
         // On Chromium, if the promise is not resolved yet,
         // we redirect the XHR to the same URL (hence same msgId)
         // while the result get cached for asynchronous retrieval
-        wrapper.result.then(r => storeAsyncRet(msgId, r));
-        return asyncResults.has(msgId)
-        ? asyncRet(msgId) // promise was already resolved
-        : {redirectUrl: url.replace(
-            /&redirects=(\d+)|$/, // redirects count to avoid loop detection
-            (all, count) => `&redirects=${parseInt(count) + 1 || 1}`)};
+        wrapper.result.then(r => storeAsyncRet(msgId, res(r)), e => storeAsyncRet(msgId, err(e)));
+        return chromeRet(asyncResults.has(msgId));
       } catch(e) {
         console.error(e);
         return CANCEL;
@@ -132,15 +143,16 @@
       }
 
       const onHeadersReceived = request => {
-        let replaced = "";
+        let replaced = false;
         let {responseHeaders} = request;
-        let rxFP = /^feature-policy$/i;
+        let rxPolicy = /^(?:feature|permissions|document)-policy$/i;
         for (let h of request.responseHeaders) {
-          if (rxFP.test(h.name)) {
-            h.value = h.value.replace(/\b(sync-xhr\s+)([^*][^;]*)/g,
-              (all, m1, m2) => replaced =
-                `${m1}${m2.replace(/'none'/, '')} 'self'`
-            );
+          if (rxPolicy.test(h.name)) {
+            const value = allowSyncXhr(h.value);
+            if (value !== h.value) {
+              replaced = true;
+              h.value = value;
+            }
           }
         }
 
@@ -149,9 +161,11 @@
         return replaced ? {responseHeaders} : null;
       };
 
-      let ret = r => ({redirectUrl:  `data:application/json,${encodeURIComponent(JSON.stringify(r))}`});
+      const ret = r => ({redirectUrl:  `data:application/json,${encodeURIComponent(JSON.stringify(r))}`});
+      const res = payload => ({payload});
+      const err = e => ({error: { message: e.message, stack: e.stack }});
 
-      let asyncRet = msgId => {
+      const asyncRet = msgId => {
         let chunks = asyncResults.get(msgId);
         let chunk = chunks.shift();
         let more = chunks.length;
@@ -163,7 +177,7 @@
       };
 
       const CHUNK_SIZE = 500000; // Work around any browser-dependent URL limit
-      let storeAsyncRet = (msgId, r) => {
+      const storeAsyncRet = (msgId, r) => {
         r = JSON.stringify(r);
         const len = r === undefined ? 0 : r.length;
         const chunksCount = Math.ceil(len / CHUNK_SIZE);
@@ -224,11 +238,19 @@
     }
   } else if (typeof browser.runtime.sendSyncMessage !== "function") {
     // Content Script side
+
+    if (window.frameElement && window.frameElement.allow) {
+      try {
+        window.frameElement.allow = allowSyncXhr(window.frameElement.allow);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     let docUrl = document.URL;
-    browser.runtime.sendSyncMessage = (msg, callback) => {
+    browser.runtime.sendSyncMessage = msg => {
       let msgId = `${uuid()},${docUrl}`;
-      let url = `${ENDPOINT_PREFIX}id=${encodeURIComponent(msgId)}` +
-        `&url=${encodeURIComponent(docUrl)}`;
+      let url = `${ENDPOINT_PREFIX}id=${encodeURIComponent(msgId)}`;
 
       // We first need to send an async message with both the payload
       // and "trusted" sender metadata, along with an unique msgId to
@@ -253,18 +275,28 @@
               continue;
             }
             result = JSON.parse(chunks.join(''));
-          } else {
-            if (result.error) throw result.error;
-            result = "payload" in result ? result.payload : result;
+          } else if (result.loop) {
+            const {loop} = result;
+            const MAX_LOOPS = 100;
+            if (++loop > MAX_LOOPS) {
+              console.debug("Too many loops (%s), look for deadlock conditions.", loop)
+              throw new Error("Too many SyncMessage loops!");
+            }
+            url = url.replace(/&loop=\d+|$/, `&loop=${loop}`);
+            console.debug("SyncMessage waiting for main process asynchronous processing, loop", loop); // DEV_BUILD
+            continue;
+          } else if (result.error) {
+            result.error = new Error(result.error.message, result.error);
           }
         } catch(e) {
-          console.error(`syncMessage error in ${document.URL}: ${e.message} (response ${r.responseText})`);
+          console.error(`SyncMessage error in ${document.URL}: ${e.message} (response ${r.responseText})`);
+          result = {error: new Error(`SyncMessage Error ${e.message}`, {cause: e})};
         }
         break;
       }
       console.debug(`SyncMessage ${msgId}, state ${document.readyState}, result: ${JSON.stringify(result)}`); // DEV_ONLY
-      if (callback) callback(result);
-      return result;
+      if (result.error) throw result.error;
+      return result.payload;
     };
   }
 

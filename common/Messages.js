@@ -28,7 +28,7 @@
     if (!__meta) {
       // legacy message from embedder or library? ignore it
       if (!_messageName) {
-        debug(`Message not in NSCL-specific format: %s`, JSON.stringify(msg));
+        debug(`Message not in NSCL-specific format: %s`, JSON.stringify(msg)); // DEV_ONLY
         return undefined;
       }
       __meta = {name: _messageName};

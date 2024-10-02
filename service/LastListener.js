@@ -43,7 +43,7 @@ class LastListener {
         } else if (this.installed) {
           this.observed.addListener(w._other, ...this.extras);
         }
-        debug("Running listener", w === ww[0] ? 0 : 1, ...args);
+        debug("Running listener", w === ww[0] ? 0 : 1, ...args); // DEV_ONLY
         return this.installed ? this.listener(...args)
           : this.defaultResult;
       }

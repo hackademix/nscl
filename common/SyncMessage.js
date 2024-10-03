@@ -35,7 +35,7 @@
       // Background Script side
 
       const pending = new Map();
-
+      let anyMessageYet = false;
       // we don't care this is async, as long as it get called before the
       // sync XHR (we are not interested in the response on the content side)
       browser.runtime.onMessage.addListener((m, sender) => {
@@ -43,6 +43,7 @@
         if (!wrapper) return;
         let {id} = wrapper;
         pending.set(id, wrapper);
+        anyMessageYet = true;
         wrapper.result = Promise.resolve(notifyListeners(JSON.stringify(wrapper.payload), sender));
         return Promise.resolve(null);
       });
@@ -55,7 +56,7 @@
         const shortUrl = url.replace(ENDPOINT_PREFIX, '');
         const params = new URLSearchParams(url.split("?")[1]);
         const msgId = params.get("id");
-        let loop = (parseInt(params.get("loop")) || 0);
+        let loop = (parseInt(params.get("loop")) || 1);
 
         const chromeRet = resultReady => {
           const r = resultReady
@@ -69,9 +70,11 @@
           return chromeRet(true);
         }
 
-        console.debug(`PENDING ${url.replace(ENDPOINT_PREFIX, '')}: ${JSON.stringify(pending.get(msgId))}`); // DEV_ONLY
+        console.debug(`PENDING ${shortUrl}: ${JSON.stringify(pending.get(msgId))}`); // DEV_ONLY
         if (!pending.has(msgId)) {
-          return; // not a valid pending request, bail silently
+          return anyMessageYet
+            ? CANCEL // cannot reconcile with any pending message, abort
+            : ret({loop}); // never received any message yet, retry
         }
 
         const wrapper = pending.get(msgId);
@@ -276,7 +279,7 @@
             }
             result = JSON.parse(chunks.join(''));
           } else if (result.loop) {
-            const {loop} = result;
+            let {loop} = result;
             const MAX_LOOPS = 100;
             if (++loop > MAX_LOOPS) {
               console.debug("Too many loops (%s), look for deadlock conditions.", loop)

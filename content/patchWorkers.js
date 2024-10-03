@@ -25,31 +25,6 @@
 var patchWorkers = (() => {
   const patches = new Set();
 
-  const failSafe = (() => {
-    const urls = new Map();
-    const getCallbacks = url => {
-      let ret = urls.get(url);
-      if (!ret) {
-        urls.set(ret = new Set());
-      };
-      return ret;
-    };
-    return {
-      add(url, cancel) {
-        getCallbacks(url).add(cancel);
-      },
-      cancel(url) {
-        for (let c of [...getCallbacks(url)]) {
-          try {
-            c();
-          } catch (e) {
-            console.error(e);
-          }
-        }
-      },
-    };
-  })();
-
   let stringify = f => typeof f === "function" ? `(${f})();\n` : `{${f}}\n`;
 
   const debugMonitor = `
@@ -83,6 +58,39 @@ var patchWorkers = (() => {
 
     if (patches.size === 0) {
       let modifyWindow = (w, {port, xray}) => {
+
+        const failSafe = (() => {
+          const urls = new Map();
+          const getCallbacks = url => {
+            let ret = urls.get(url);
+            if (!ret) {
+              urls.set(ret = new Set());
+            };
+            return ret;
+          };
+          return {
+            add(url, cancel) {
+              getCallbacks(url).add(cancel);
+            },
+            cancel(url) {
+              for (let c of [...getCallbacks(url)]) {
+                try {
+                  c();
+                } catch (e) {
+                  console.error(e);
+                }
+              }
+            },
+          };
+        })();
+
+        port.onMessage = msg => {
+          switch(msg.type) {
+            case "cancelUrl":
+              failSafe.cancel(msg.url);
+            break;
+          }
+        };
 
         const {window} = xray;
 
@@ -213,7 +221,7 @@ var patchWorkers = (() => {
               __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
             }).then(r => {}, e => {
               // terminate / unregister workers which could not be patched
-              failSafe.cancel(url);
+              port.postMessage({type: "cancelUrl", url});
             });
           }
         }

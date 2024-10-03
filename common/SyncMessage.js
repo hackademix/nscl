@@ -52,7 +52,7 @@
       const CANCEL = {cancel: true};
 
       let onBeforeRequest = request => { try {
-        const {url, tabId} = request;
+        const {url} = request;
         const shortUrl = url.replace(ENDPOINT_PREFIX, '');
         const params = new URLSearchParams(url.split("?")[1]);
         const msgId = params.get("id");
@@ -62,7 +62,7 @@
           const r = resultReady
             ? asyncRet(msgId) // promise was already resolved
             : ret({loop});
-          console.debug("SyncMessage XHR->webRequest %s returning %o", shortUrl, r); // DEV_ONLY
+          console.debug("SyncMessage XHR->webRequest %s returning %o", shortUrl, r, request); // DEV_ONLY
           return r;
         };
 
@@ -70,14 +70,14 @@
           return chromeRet(true);
         }
 
-        console.debug(`PENDING ${shortUrl}: ${JSON.stringify(pending.get(msgId))}`); // DEV_ONLY
-        if (!pending.has(msgId)) {
+        const wrapper = pending.get(msgId);
+
+        console.debug(`PENDING ${shortUrl}: ${JSON.stringify(wrapper)}`, request); // DEV_ONLY
+        if (!wrapper) {
           return anyMessageYet
             ? CANCEL // cannot reconcile with any pending message, abort
             : ret({loop}); // never received any message yet, retry
         }
-
-        const wrapper = pending.get(msgId);
 
         if (MOZILLA) {
           // this should be a mozilla suspension request
@@ -250,9 +250,9 @@
       }
     }
 
-    let docUrl = document.URL;
+    const docId = uuid();
     browser.runtime.sendSyncMessage = msg => {
-      let msgId = `${uuid()},${docUrl}`;
+      let msgId = `${uuid()}:${docId}`;
       let url = `${ENDPOINT_PREFIX}id=${encodeURIComponent(msgId)}`;
 
       // We first need to send an async message with both the payload
@@ -282,17 +282,17 @@
             let {loop} = result;
             const MAX_LOOPS = 100;
             if (++loop > MAX_LOOPS) {
-              console.debug("Too many loops (%s), look for deadlock conditions.", loop)
+              console.debug("Too many loops (%s), look for deadlock conditions.", loop);
               throw new Error("Too many SyncMessage loops!");
             }
             url = url.replace(/&loop=\d+|$/, `&loop=${loop}`);
-            console.debug("SyncMessage waiting for main process asynchronous processing, loop", loop); // DEV_BUILD
+            console.debug(`SyncMessage ${msgId} waiting for main process asynchronous processing, loop ${loop}.`); // DEV_BUILD
             continue;
           } else if (result.error) {
             result.error = new Error(result.error.message, result.error);
           }
         } catch(e) {
-          console.error(`SyncMessage error in ${document.URL}: ${e.message} (response ${r.responseText})`);
+          console.error(`SyncMessage ${msgId} error in ${document.URL}: ${e.message} (response ${r.responseText})`);
           result = {error: new Error(`SyncMessage Error ${e.message}`, {cause: e})};
         }
         break;

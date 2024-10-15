@@ -385,7 +385,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
         listeners.add(l);
       },
       removeListener(l) {
-        listeners.remove(l);
+        listeners.delete(l);
       },
       hasListener(l) {
         return listeners.has(l);

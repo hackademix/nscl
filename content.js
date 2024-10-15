@@ -18,4 +18,4 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-console.log("NoScript Commons Library main content script");
+console.log("NoScript Commons Library main content script", Date.now(), document.readyState, document.documentElement.outerHTML);

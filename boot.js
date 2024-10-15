@@ -20,8 +20,11 @@
 
 "use strict";
 try {
-  let BASE = "";
-  self.include = src => Array.isArray(src) ? importScripts(...src) : importScripts(src);
+  const BASE = "";
+  // Execute as a node app to output the includes for Firefox's manifest.json scripts key // DEV_ONLY
+  globalThis.importScripts ||= (...src) => (importScripts.imported ||= []).push(...src); // DEV_ONLY
+
+  globalThis.include = src => Array.isArray(src) ? importScripts(...src) : importScripts(src);
 
   let includeFrom = (dir, srcs) =>  include(srcs.map(name => `${BASE}/${dir}/${name}.js`));
 
@@ -41,6 +44,8 @@ try {
   includeFrom("service", [
     "TabCache"
   ]);
+
+  if (importScripts.imported) console.log(JSON.stringify(importScripts.imported, null, 2)); // DEV_ONLY
 } catch (e) {
   console.error(e);
 }

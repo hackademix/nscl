@@ -4,11 +4,11 @@
   "name": "NoScript Commons Library",
   "applications": {
     "gecko": {
-      "id":  "nscl@noscript.net",
+      "id": "nscl@noscript.net",
       "strict_min_version": "115.0"
     }
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
 
   "permissions": [
       "contextMenus",
@@ -17,6 +17,7 @@
       "unlimitedStorage",
       "webNavigation",
       "webRequest",
+      "webRequestBlocking",
       "scripting",
       "declarativeNetRequest",
       "declarativeNetRequestFeedback",
@@ -28,7 +29,30 @@
   ],
 
   "background": {
-    "service_worker": "main.js"
+    "service_worker": "sw.js",
+    "scripts": [
+    "/lib/browser-polyfill.js",
+    "/lib/punycode.js",
+    "/common/UA.js",
+    "/common/uuid.js",
+    "/common/log.js",
+    "/common/locale.js",
+    "/common/tld.js",
+    "/common/Messages.js",
+    "/common/SyncMessage.js",
+    "/common/CSP.js",
+    "/common/CapsCSP.js",
+    "/common/NetCSP.js",
+    "/common/RequestKey.js",
+    "/common/Sites.js",
+    "/common/Permissions.js",
+    "/common/Policy.js",
+    "/common/Storage.js",
+    "/common/sha256.js",
+    "/service/TabCache.js",
+    "/common/include.js",
+    "/main.js"
+    ]
   },
 
   "content_scripts": [
@@ -38,8 +62,16 @@
       "match_about_blank": true,
       "all_frames": true,
       "js": [
+        "/lib/browser-polyfill.js",
+        "/common/uuid.js",
+        "/common/SyncMessage.js",
 	      "content.js"
       ]
     }
-  ]
+  ],
+
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
 }

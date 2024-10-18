@@ -42,7 +42,7 @@ function CapsCSP(baseCSP = new CSP()) {
         // for instance data: and blob: URIs
         for (let type of this.dataUriTypes) {
           if (blockedTypes.delete(type)) {
-            blockedTypes.add({type, value: "http:"});
+            blockedTypes.add({type, value: "http: file:"});
           }
         }
       }

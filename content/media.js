@@ -20,29 +20,30 @@
 
 if ("MediaSource" in window) {
   let mediaBlocker;
-  let notify = allowed => {
-    let request = {
+  const notify = (allowed, request = {}) => {
+    request = Object.assign({
       id: "noscript-media",
       type: "media",
       url: document.URL,
       documentUrl: document.URL,
       embeddingDocument: true,
-    };
+    }, request);
     seen.record({policyType: "media", request, allowed});
-    debug("MSE notification", document.URL); // DEV_ONLY
+    debug("mediaBlocker notification", request); // DEV_ONLY
     notifyPage();
     return request;
   };
-  let createPlaceholder = (mediaElement, request) => {
+  const createPlaceholder = (mediaElement, request) => {
     try {
       let ph = PlaceHolder.create("media", request);
       ph.replace(mediaElement);
       PlaceHolder.listen();
-      debug("MSE placeholder for %o", mediaElement); // DEV_ONLY
+      debug("mediaBlocker placeholder for %o", mediaElement); // DEV_ONLY
     } catch (e) {
       error(e);
     }
   };
+  let mozPatch;
   if ("SecurityPolicyViolationEvent" in window) {
     // "Modern" browsers
     let createPlaceholders = () => {
@@ -71,7 +72,6 @@ if ("MediaSource" in window) {
       }
     }, true);
   }
-  let mozPatch;
   if (typeof exportFunction === "function") {
     // Fallback: Mozilla does not seem to trigger CSP media-src http: for blob: URIs assigned in MSE
     window.wrappedJSObject.document.createElement("video").src = "data:"; // triggers early mediaBlocker initialization via CSP
@@ -79,13 +79,10 @@ if ("MediaSource" in window) {
       mediaBlocker = !ns.allows("media");
       if (mediaBlocker) {
         debug("mediaBlocker set via fetched policy.");
-        if (ns.canScript) {
-          mozPatch();
-        }
+        mozPatch();
       }
     });
-    mozPatch = () => patchWindow((win, {xray})=> {
-      mozPatch = () => {};
+    let mozMsePatch = () => patchWindow((win, {xray})=> {
       let unpatched = new Map();
       function patch(obj, methodName, replacement) {
         let methods = unpatched.get(obj) || {};
@@ -132,6 +129,51 @@ if ("MediaSource" in window) {
         return unpatched.get(MediaSourceProto).addSourceBuffer.call(ms, mime, ...args);
       });
     });
+
+    mozPatch = () => {
+      mozPatch = () => {}; // just once;
+      mozMsePatch();
+      if (location.protocol !== "file:") return;
+      // Gecko doesn't block file:// media even with CSP media-src 'none',
+      // neither intercepts them in webRequest.onBeforeLoad listeners :(
+      // We will have to check node by node by observing DOM mutations...
+      const allowedSrc = new Set();
+      const checkSrc = async (node) => {
+        if (!('src' in node && node.parentNode && node instanceof HTMLMediaElement)) return;
+        const url = node.src;
+        if (allowedSrc.has(url) || !url.startsWith("file:")) return;
+        // Block preemptively while fetching permissions asynchronously
+        node.src = "data:";
+        const {permissions} = await Messages.send("fetchChildPolicy", {url});
+        const allowed = permissions.capabilities.includes("media");
+        const request = notify(allowed, {url, embeddingDocument: false});
+        if (allowed) {
+          allowedSrc.add(url);
+        } else {
+          createPlaceholder(node, request);
+        }
+        // Restore the src for the node (either replaced or allowed)
+        node.src = url;
+      };
+      const mutationsCallback = records => {
+        for (var r of records) {
+          switch (r.type) {
+            case "attributes":
+              checkSrc(r.target);
+              break;
+            case "childList":
+              [...r.addedNodes].forEach(checkSrc);
+              break;
+          }
+        }
+      };
+      const observer = new MutationObserver(mutationsCallback);
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributeFilter: ["src"],
+      });
+    };
   } else {
     mozPatch = () => {};
   }

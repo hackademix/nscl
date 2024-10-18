@@ -45,7 +45,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       let wrapper = m.__syncMessage__;
       if (!wrapper) return;
       if (wrapper.release) {
-        suspender.release(id);
+        suspender.release(wrapper.id);
       } else if ("payload" in wrapper) {
         anyMessageYet = true;
         wrapper.result = Promise.resolve(
@@ -74,7 +74,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       let more = chunks.length;
       if (more === 0) {
         asyncResults.delete(msgId);
-        wrapperHandler.clear(msgId);
+        suspender.release(msgId);
       }
       return ret({ chunk, more });
     };
@@ -372,7 +372,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
               hold(wrapper) {
                 pending.set(wrapper.id, wrapper);
               },
-              clear(id) {
+              release(id) {
                 pending.delete(id);
               },
             };
@@ -491,7 +491,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
         break;
       }
       browser.runtime.sendMessage({
-        __syncMessage__: { id: msgId, cleanup: true },
+        __syncMessage__: { id: msgId, release: true },
       });
       console.debug(`SyncMessage ${msgId}, state ${ document.readyState }, result: ${JSON.stringify(result)}`); // DEV_ONLY
       if (result.error) throw result.error;

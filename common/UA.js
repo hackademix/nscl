@@ -28,8 +28,17 @@
   if (isMozilla) {
     if (mozWebExtUrl) {
       // help browser-specific UI styling
-      document.documentElement.classList.add("mozwebext");
       mobile = !("windows" in browser);
+      (async () => {
+        const cssClasses = ["mozwebext"];
+        if (mobile) cssClasses.push("mobile");
+        const {vendor} = await browser.runtime.getBrowserInfo();
+        const tor = vendor.match(/^(?:Tor|Mullvad)\b/);
+        const mullvad = tor && tor[0] == "Mullvad";
+        if (tor) cssClasses.push("tor");
+        if (mullvad) cssClasses.push("mullvad");
+        document.documentElement.classList.add(...cssClasses);
+      })();
     }
   } else {
     // shims for non-Mozilla browsers

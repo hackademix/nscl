@@ -20,7 +20,7 @@
 
 var TabCache = (() => {
 
-  let cache = new Map();
+  const cache = new Map();
 
   browser.tabs.onUpdated.addListener((tabId, changes, tab) => {
     cache.set(tabId, tab);
@@ -30,13 +30,12 @@ var TabCache = (() => {
     cache.delete(tabId);
   });
 
-  (async () => {
-    for (let tab of await browser.tabs.query({})) {
-      cache.set(tab.id, tab);
-    }
-  })();
-
   return {
+    wakening: (async () => {
+      for (let tab of await browser.tabs.query({})) {
+        cache.set(tab.id, tab);
+      }
+    })(),
     get(tabId) {
       return cache.get(tabId);
     },

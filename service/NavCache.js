@@ -49,22 +49,22 @@ var NavCache = (() => {
   });
 
 
-  (async () => {
-
-    async function populateFrames(tab) {
-      let tabId = tab.id;
-      let frames =  await browser.webNavigation.getAllFrames({tabId});
-      if (!frames) return; // invalid tab
-      if (!tabs[tabId]) tabs[tabId] = {};
-      let top = tabs[tabId];
-      for ({frameId, url, parentFrameId} of frames) {
-        tab[frameId] = {url, parentFrameId};
-      }
-    }
-    await Promise.all((await browser.tabs.query({})).map(populateFrames));
-  })();
-
   return {
+    wakening: (async () => {
+      async function populateFrames(tab) {
+        let tabId = tab.id;
+        let frames =  await browser.webNavigation.getAllFrames({tabId});
+        if (!frames) return; // invalid tab
+        if (!tabs[tabId]) tabs[tabId] = {};
+        let top = tabs[tabId];
+        for ({frameId, url, parentFrameId} of frames) {
+          tab[frameId] = {url, parentFrameId};
+        }
+      }
+      await Promise.all((await browser.tabs.query({})).map(populateFrames));
+      return true;
+    })(),
+
     getTab(tabId) {
       return clone(tabs[tabId] || {});
     },

@@ -23,7 +23,7 @@
   const allHandlers = new Set();
   const namespacedHandlers = new Map();
 
-  let dispatch = (msg, sender) => {
+  const dispatchImmediate = (msg, sender) => {
     let {__meta, _messageName} = msg;
     if (!__meta) {
       // legacy message from embedder or library? ignore it
@@ -79,6 +79,11 @@
     }
   };
 
+  const dispatch = async (...args) => {
+    await Messages.wakening;
+    return await dispatchImmediate(...args);
+  }
+
   var Messages = {
     addHandler(handler, impl) {
       let originalSize = allHandlers.size;
@@ -113,6 +118,7 @@
     isMissingEndpoint(error) {
       return error && error.message ===
         "Could not establish connection. Receiving end does not exist.";
-    }
+    },
+    wakening: false,
   }
 }

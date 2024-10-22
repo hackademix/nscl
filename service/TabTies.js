@@ -18,10 +18,23 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// depends on /nscl/common/SessionCache.js
+
 var TabTies = (() => {
 
-  const map = new Map([[-1, new Set()]]);
+  let map = new Map([[-1, new Set()]]);
 
+  const session = new SessionCache(
+    "TabTies",
+    {
+      afterLoad(data) {
+        if (data) return map = new Map(data)
+      },
+      beforeSave() {
+        return [...map.entries()]
+      },
+    }
+  );
 
   function tie(tabId1, tabId2) {
     if (!(tabId1 > -1 && tabId2 > -1 && tabId1 !== tabId2)) return;
@@ -31,7 +44,7 @@ var TabTies = (() => {
       .concat([...getTiesWithSelf(tabId2)]));
 
     for (let tid of allTies) map.set(tid, allTies);
-
+    session.save();
     debug("[TabTies] Tied", tabId1, tabId2, map);
   }
 
@@ -40,6 +53,7 @@ var TabTies = (() => {
     let allTies = getTiesWithSelf(tabId);
     map.delete(tabId);
     allTies.delete(tabId);
+    session.save();
     debug("[TabTies] Cut", tabId, map);
   }
 
@@ -48,14 +62,7 @@ var TabTies = (() => {
     return ties || map.set(tabId, ties = new Set([tabId])) && ties;
   }
 
-  const ties =  {
-    get(tabId) {
-      let ties = new Set(getTiesWithSelf(tabId));
-      ties.delete(tabId);
-      return ties;
-    },
-    cut
-  };
+
 
 
   browser.webNavigation.onCreatedNavigationTarget.addListener(({sourceTabId, tabId})  => {
@@ -87,11 +94,27 @@ var TabTies = (() => {
     cut(tabId);
   });
 
-  (async () => {
-    for (let tab of await browser.tabs.query({})) {
-      tie(tab.id, tab.openerTabId);
-    }
-  })();
+  return {
+    wakening: (async () => {
+      await session.load(); // this fills map from session storage
+      // we create a copy to discard any tab that's gone away since last wake up
+      const updatedMap = new Map();
+      for (const {id, openerTabId} of await browser.tabs.query({})) {
+        if (!map.has(id)) {
+          tie(id, openerTabId);
+        }
+        updatedMap.set(id, map.get(id));
+      }
+      map = updatedMap;
+      session.save();
+    })(),
 
-  return ties;
+    get(tabId) {
+      let ties = new Set(getTiesWithSelf(tabId));
+      ties.delete(tabId);
+      return ties;
+    },
+    cut,
+  }
+
 })();

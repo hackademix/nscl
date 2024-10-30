@@ -102,6 +102,31 @@ var PlaceHolder = (() => {
     destStyle.display = srcStyle.display !== "block" ? "inline-block" : "block";
   }
 
+  function clickListener(ev) {
+    if (ev.button === 0 && ev.isTrusted) {
+      let ph, replacement;
+      for (let e of document.elementsFromPoint(ev.clientX, ev.clientY)) {
+        if (ph = e._placeHolderObj) {
+          replacement = e;
+          break;
+        }
+        if (replacement = e._placeHolderReplacement) {
+          ph = replacement._placeHolderObj;
+          break;
+        }
+      }
+      if (ph) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (ev.target.value === "close") {
+          ph.close(replacement);
+        } else {
+          ph.enable(replacement);
+        }
+      }
+    }
+  }
+
   class PlaceHolder {
 
     static create(policyType, request) {
@@ -115,31 +140,7 @@ var PlaceHolder = (() => {
     }
 
     static listen() {
-      PlaceHolder.listen = () => {};
-      window.addEventListener("click", ev => {
-        if (ev.button === 0 && ev.isTrusted) {
-          let ph, replacement;
-          for (let e of document.elementsFromPoint(ev.clientX, ev.clientY)) {
-            if (ph = e._placeHolderObj) {
-              replacement = e;
-              break;
-            }
-            if (replacement = e._placeHolderReplacement) {
-              ph = replacement._placeHolderObj;
-              break;
-            }
-          }
-          if (ph) {
-            ev.preventDefault();
-            ev.stopPropagation();
-            if (ev.target.value === "close") {
-              ph.close(replacement);
-            } else {
-              ph.enable(replacement);
-            }
-          }
-        }
-      }, true, false);
+      window.addEventListener("click", clickListener, true, false);
     }
 
     constructor(policyType, request) {

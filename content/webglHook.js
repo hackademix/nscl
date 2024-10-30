@@ -46,12 +46,27 @@ ns.on("capabilities", event => {
 
       const getContext = xray.getSafeMethod(scope[canvas].prototype, "getContext");
 
+      const MAX_CONSECUTIVE = 20;
+      let consecutive = 0;
+      let lastTime = 0;
+      let panic = false;
       const handler = cloneInto({
         apply: function(targetObj, thisArg, argumentsList) {
           debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${canvas}, ${canvas?.parentElement}`);
           if (thisArg instanceof CanvasClass && /webgl/i.test(argumentsList[0])) {
-            let target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
-            port.postMessage("webgl", target);
+            if (panic) {
+              return null;
+            }
+            const target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
+            const t = Date.now();
+            if (t - lastTime < 5 && consecutive++ > MAX_CONSECUTIVE) {
+              console.error("Too many consecutive blocked webgl contexts, trying to break the loop.");
+              panic = true;
+              port.postMessage("panic");
+            } else {
+              port.postMessage("notify", target);
+              lastTime = t;
+            }
             return null;
           }
           return getContext.call(thisArg, ...argumentsList);
@@ -86,11 +101,28 @@ ns.on("capabilities", event => {
     }
   }
 
+  function panicAbort() {
+    const html = document.documentElement.outerHTML;
+    const scriptBlocker = `<head><meta http-equiv="content-security-policy" content="script-src 'none'"></head>`;
+    DocRewriter.rewrite(scriptBlocker);
+    DocRewriter.rewrite(html);
+
+    const target = document.body.appendChild(document.createElement("canvas"));
+    target.style = "position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%";
+    notifyWebGL(target);
+  }
+
   let port = patchWindow(modifyGetContext);
   port.onMessage = (msg, {target}) => {
     debug(`WebGLHook msg: ${msg}, target: ${target}`);
-    if (msg !== "webgl") return;
-    notifyWebGL(target);
+    switch(msg) {
+      case "notify":
+        notifyWebGL(target);
+        break;
+      case "panic":
+        panicAbort();
+        break;
+    }
   }
 
   debug(`WebGLHook installed on window ${document.URL}.`);

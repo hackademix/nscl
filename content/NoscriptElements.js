@@ -18,6 +18,8 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// depends on /nscl/content/DocRewriter.js
+
 "use strict";
 
 var NoscriptElements = {
@@ -85,13 +87,10 @@ var NoscriptElements = {
     }
 
     function rewrite() {
-      let html = document.documentElement.outerHTML;
+      const html = document.documentElement.outerHTML;
       debug("Rewriting page to emulate meta-refresh", html);
-      let doc = window.wrappedJSObject ? window.wrappedJSObject.document : window.document;
       try {
-        doc.open();
-        doc.write(html);
-        doc.close();
+        DocRewriter.rewrite(html);
       } catch (e) {
         error(e);
       }

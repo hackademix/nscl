@@ -24,29 +24,34 @@ var PlaceHolder = (() => {
   const SELECTOR = `a.${CLASS_NAME.split(/\s+/).join('.')}`;
   const OFFSCREEN = new Set();
 
-  var theme;
-  let updateTheme = replacement => {
-    if (theme === undefined) {
-      (async () => {
-        try {
-          theme = await Messages.send("getTheme");
-        } catch (e) {
-          theme = "";
+  const Theme = {
+    _initializing: null,
+    async _init() {
+      let theme;
+      try {
+        theme = await Messages.send("getTheme");
+        for (let replacement of [...document.querySelectorAll(SELECTOR)]) {
+          this.update(replacement);
         }
-        updateTheme(replacement);
-      })();
-      return;
+      } catch (e) {
+        console.error(e);
+      }
+      return Object.entries(theme || {});
+    },
+    async update(replacement) {
+      this._initializing ||= this._init();
+      if (replacement) {
+        for (const [className, toggle] of [...await this._initializing]) {
+          replacement.classList.toggle(className, toggle);
+        }
+      }
     }
-    if (replacement && theme) {
-      replacement.classList.add(theme);
-    }
-    return;
   };
 
   if (document.querySelector(SELECTOR)) {
     // Bootstrap remote CSS on extension updates if the content script is injected in a page
     // already contains placeholders, e.g. on extension updates
-    updateTheme();
+    Theme.update();
   }
 
   class Handler {
@@ -221,7 +226,7 @@ var PlaceHolder = (() => {
         e._placeHolderReplacement = replacement;
       }
 
-      updateTheme(replacement);
+      Theme.update(replacement);
 
       element.replaceWith(replacement);
 

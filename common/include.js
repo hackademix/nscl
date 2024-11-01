@@ -20,15 +20,55 @@
 
 var include = (() =>
 {
-  let  _inclusions = new Map();
+  if (self.importScripts) {
+    const imported = new Set();
+    const include = src => {
+      if (Array.isArray(src)) {
+        for (const s of src) {
+          include(s);
+        }
+      } else if (!imported.has(src)) {
+        console.debug("Importing", src); // DEV_ONLY
+        importScripts(src);
+        imported.add(src);
+      }
+    };
 
-  function scriptLoader(src) {
+    // bootstrap from manifest.json
+    const {background} = (chrome || browser).runtime.getManifest();
+    if (background.scripts) {
+      const {scripts} = background;
+      // prevent self importing
+      imported.add(scripts.find(s => s.endsWith("common/include.js")));
+      include(scripts);
+      // MV3 service worker needs lazy scripts to be pre-imported in the install event,
+      // https://issues.chromium.org/issues/40760920#comment11
+      addEventListener("install", ev => {
+        include(scripts);
+        const rx = /\bawait\s*include\s*\(\s*(["[][^)]+)/g;
+        ev.waitUntil((async () => {
+          for (const src of scripts) {
+            const code = await (await fetch(src)).text();
+            for (let [, args] of code.matchAll(rx)) {
+              include(JSON.parse(args));
+            }
+          }
+        })());
+      });
+    }
+
+    return include;
+  }
+
+  const _inclusions = new Map();
+
+  const scriptLoader = src => {
     let script = document.createElement("script");
     script.src = src;
     return script;
   }
 
-  function styleLoader(src) {
+  const styleLoader = src => {
     let style = document.createElement("link");
     style.rel = "stylesheet";
     style.type = "text/css";
@@ -36,12 +76,12 @@ var include = (() =>
     return style;
   }
 
-  return async function include(src) {
+  return async src => {
     if (_inclusions.has(src)) return await _inclusions.get(src);
     if (Array.isArray(src)) {
       return await Promise.all(src.map(s => include(s)));
     }
-    debug("Including", src);
+    console.debug("Including", src); // DEV_ONLY
 
     let loading = new Promise((resolve, reject) => {
       let inc = src.endsWith(".css") ? styleLoader(src) : scriptLoader(src);
@@ -50,7 +90,7 @@ var include = (() =>
       try {
         document.head.appendChild(inc);
       } catch (e) {
-        error(e, "Fatal failed inclusion, reloading extension.");
+        console.error(e, "Fatal failed inclusion, reloading extension.");
         browser.runtime.reload();
       }
     });

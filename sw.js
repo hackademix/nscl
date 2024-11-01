@@ -19,5 +19,5 @@
  */
 
 // bootstrap core NoScript Commons Library objects for if service worker
-importScripts("/boot.js", "/main.js");
+importScripts("common/include.js");
 console.log("NoScript Commons Library Manifest V3 service worker");

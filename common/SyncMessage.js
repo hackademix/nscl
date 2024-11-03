@@ -212,13 +212,13 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                 }
                 const { id } = wrapper;
                 const urlFilter = `|${msgUrl(wrapper.id)}`;
-                const redirId = createRedirector(urlFilter, result.redirectUrl);
+                const redirId = await createRedirector(urlFilter, result.redirectUrl);
                 msg2redirector.set(id, redirId);
               },
               release(id) {
                 const redirId = msg2redirector.get(id);
                 if (!redirId) return;
-                msg2Rrule.delete(id);
+                msg2redirector.delete(id);
                 removeRedirector(redirId);
               },
             };

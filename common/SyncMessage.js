@@ -37,7 +37,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       .replace(/^\s*[;,]\s*/, "");
 
   if (browser.webRequest) {
-    // Backround script / event page / service worker
+    // Background script / event page / service worker
     let anyMessageYet = false;
     // we don't care this is async, as long as it get called before the
     // sync XHR (we are not interested in the response on the content side)
@@ -212,13 +212,13 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                 }
                 const { id } = wrapper;
                 const urlFilter = `|${msgUrl(wrapper.id)}`;
-                const redirId = createRedirector(urlFilter, result.redirectUrl);
+                const redirId = await createRedirector(urlFilter, result.redirectUrl);
                 msg2redirector.set(id, redirId);
               },
               release(id) {
                 const redirId = msg2redirector.get(id);
                 if (!redirId) return;
-                msg2Rrule.delete(id);
+                msg2redirector.delete(id);
                 removeRedirector(redirId);
               },
             };

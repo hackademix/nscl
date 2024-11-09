@@ -18,7 +18,7 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-(async () => {
+globalThis.runTests = async () => {
   await include("/test/Test.js");
   Test.include([
     "Policy",
@@ -26,4 +26,4 @@
     "Storage",
     "TLD",
   ]);
-})();
+};

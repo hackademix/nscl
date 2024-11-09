@@ -137,7 +137,7 @@ var CachedStorage = (() => {
         }
       }
       metadata.lastSaved = Date.now();
-      return await Promise.all(savingTasks);
+      return await Promise.allSettled(savingTasks);
     },
   };
 })();

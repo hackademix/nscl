@@ -49,7 +49,7 @@ var DocStartInjection = (() => {
     let {tabId, frameId, url} = request;
     if (tabId < 0 || !/^(?:(?:https?|ftp|data|blob|file):|about:blank$)/.test(url)) return;
 
-    await Promise.all([...scriptBuilders].map(async buildScript => {
+    await Promise.allSettled([...scriptBuilders].map(async buildScript => {
       let script;
       try {
         script = await buildScript({tabId, frameId, url});

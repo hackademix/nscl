@@ -296,7 +296,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     for (let rule of sheet.cssRules) {
       pending.push(checkRule(rule));
     }
-    Promise.all(pending).then(() => {
+    Promise.allSettled(pending).then(() => {
       keepDisabled(sheet, false);
       if (ownerNode) keepDisabled(ownerNode, false)
     });

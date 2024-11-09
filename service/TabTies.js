@@ -69,8 +69,8 @@ var TabTies = (() => {
     tie(sourceTabId, tabId);
   });
 
-  browser.webNavigation.onCommitted.addListener(details  => {
-    debug("[TabTies] webNavigation.onCommited", details);
+  browser.webNavigation.onCommitted.addListener(async details => {
+    debug("[TabTies] webNavigation.onCommitted", details); // DEV_ONLY
     let {tabId, frameId, transitionType, transitionQualifiers} = details;
     if (frameId !== 0) return;
     if (/^(?:link|form_submit|reload)$/.test(transitionType) ||
@@ -79,10 +79,14 @@ var TabTies = (() => {
       return;
     }
     cut(tabId);
-    browser.tabs.executeScript({
-      runAt: "document_start",
-      code: "window.name = '';"
-    });
+    try {
+      await Scripting.executeScript({
+        target: {tabId, allFrames: false},
+        func: () => { window.name = "" },
+      });
+    } catch (e) {
+      // ignore, most likely a privileged page
+    }
   });
 
 

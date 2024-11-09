@@ -35,6 +35,7 @@ async function test() {
   out("Running tests...");
   console.clear();
   await include("/test/run.js");
+  runTests();
   out("Open the console to see the results.");
 }
 

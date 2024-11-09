@@ -17,33 +17,42 @@
  * You should have received a copy of the GNU General Public License along with
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
+if (!self.Wakening) {
 
-// depends on /nscl/common/SessionCache.js
+  // Thanks wOxxOm, https://groups.google.com/a/chromium.org/g/chromium-extensions/c/bnH_zx2LjQY/m/kOAzozYxCQAJ
 
-var Wakening = {
-  async waitFor(...sleepers) {
-    // Thanks wOxxOm, https://groups.google.com/a/chromium.org/g/chromium-extensions/c/bnH_zx2LjQY/m/kOAzozYxCQAJ
-    const wakening = await (async () => {
-      const {browser} = self;
-      const apiHandler = {
-        has: (src, key) => {
-          const val = src[key];
-          if (key === 'addListener' && typeof val === 'function') {
-            return (fn, ...filters) => {
-              src[key](async (...res) => (await wakening, fn(...res)), ...filters);
-            };
-          }
-          return val && typeof val === 'object' && /^[a-z]/.test(key)
-            ? new Proxy(val, chromeHandler)
-            : val;
-        },
-      };
-      self.browser = new Proxy(browser, apiHandler);
-      for (let s of sleepers) {
-        await (s.wakening || s);
+  self.Wakening = {};
+
+  const wakening = new Promise(resolve => {
+    self.Wakening.done = resolve;
+    Object.freeze(self.Wakening);
+  });
+
+  const {browser} = self;
+
+  const apiHandler = {
+    has: (src, key) => {
+      const val = src[key];
+      if (key === 'addListener' && typeof val === 'function') {
+        return (fn, ...filters) => {
+          src[key](async (...res) => (
+          console.debug("Wakening on hold", src, new Error().stack), // DEV_ONLY
+          await wakening,
+          fn(...res)),
+            ...filters);
+        };
       }
-      self.browser = browser;
-    })();
-    return wakening;
-  }
-};
+      return val && typeof val === 'object' && /^[a-z]/.test(key)
+        ? new Proxy(val, apiHandler)
+        : val;
+    },
+  };
+
+  self.browser = new Proxy(browser, apiHandler);
+
+  (async () => {
+    await wakening;
+    console.debug("Wakening done"); // DEV_ONLY
+    self.browser = browser;
+  })();
+}

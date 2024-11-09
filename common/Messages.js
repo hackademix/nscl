@@ -81,7 +81,13 @@
 
   const dispatch = async (...args) => {
     await Messages.wakening;
-    return await dispatchImmediate(...args);
+    try {
+      const ret = dispatchImmediate(...args);
+      console.debug("Returning %o from Messages dispatch", ret, args); // DEV_ONLY
+      return ret;
+    } catch (e) {
+      console.error(e, "Could not dispatch message", ...args);
+    }
   }
 
   var Messages = {
@@ -105,7 +111,12 @@
         browser.runtime.onMessage.removeListener(dispatch);
       }
     },
-    async send(name, args = {}, recipientInfo = null) {
+    async send(...args) {
+      const ret = await this._send(...args);
+      console.debug("Returned %o from Messages.send", ret, args); // DEV_ONLY
+      return ret;
+    },
+    async _send(name, args = {}, recipientInfo = null) {
       args.__meta = {name, recipientInfo};
       args._messageName = name; // legacy protocol, for embedders
       if (recipientInfo && "tabId" in recipientInfo) {

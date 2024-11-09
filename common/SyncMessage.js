@@ -24,10 +24,12 @@
 if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
   const MOZILLA =
     self.XMLHttpRequest && "mozSystem" in self.XMLHttpRequest.prototype;
+
   const ENDPOINT_ORIGIN = "https://[ff00::]";
   const ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/nscl/${browser.runtime.getURL(
     "syncMessage"
   )}?`;
+
   const msgUrl = (msgId) => `${ENDPOINT_PREFIX}id=${encodeURIComponent(msgId)}`;
 
   // https://github.com/w3c/webappsec-permissions-policy/blob/main/permissions-policy-explainer.md#appendix-big-changes-since-this-was-called-feature-policy
@@ -37,7 +39,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       .replace(/^\s*[;,]\s*/, "");
 
   if (browser.webRequest) {
-    // Backround script / event page / service worker
+    // Background script / event page / service worker
     let anyMessageYet = false;
     // we don't care this is async, as long as it get called before the
     // sync XHR (we are not interested in the response on the content side)
@@ -59,9 +61,8 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
     const asyncResults = new Map();
 
     const ret = (r) => ({
-      redirectUrl: `data:application/json,${encodeURIComponent(
-        JSON.stringify(r)
-      )}`,
+      redirectUrl: `data:application/json,${
+        encodeURIComponent(JSON.stringify(r))}`,
     });
     const res = (payload) => ({ payload });
     const err = (e) => ({ error: { message: e.message, stack: e.stack } });
@@ -110,8 +111,8 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       browser.declarativeNetRequest && !MOZILLA
         ? () => {
             // MV3
-            const DNR_BASE_ID = 16384;
-            const DNR_BASE_PRIORITY = 100;
+            const DNR_BASE_ID = 65535;
+            const DNR_BASE_PRIORITY = 1000;
             let lastRuleId = DNR_BASE_ID;
             const msg2redirector = new Map();
             const { redirectUrl } = LOOP_RET;
@@ -453,6 +454,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       // Now go retrieve the result!
       const MAX_LOOPS = 1000;
       let r = new XMLHttpRequest();
+
       let result;
       let chunks = [];
       for (let loop = 0; ; ) {
@@ -481,8 +483,8 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
             result.error = new Error(result.error.message, result.error);
           }
         } catch (e) {
-          console.error(
-            `SyncMessage ${msgId} error in ${document.URL}: ${e.message} (response ${r.responseText})`
+          console.error(e,
+            `SyncMessage ${msgId} error in ${document.URL}: ${e.message} (response ${r.responseURL} ${r.responseText})`
           );
           result = {
             error: new Error(`SyncMessage Error ${e.message}`, { cause: e }),

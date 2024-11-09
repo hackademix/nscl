@@ -99,15 +99,15 @@ var DocStartInjection = (() => {
           for (s of scripts) {
             const {callback, assign, data} = s;
             try {
-              if (assign) {
-                self[assign] = data;
+              if (assign && !(assign in globalThis)) {
+                globalThis[assign] = data;
               }
               if (callback) {
-                let cb = self[callback];
+                let cb = globalThis[callback];
                 if (typeof cb == "function") {
-                  cb.call(self, data);
+                  cb.call(globalThis, data);
                 } else {
-                  console.warn(`callback self.${callback} is not a function (${cb}).`);
+                  console.warn(`callback globalThis.${callback} is not a function (${cb}).`);
                 }
               }
             } catch (e) {
@@ -274,6 +274,7 @@ var DocStartInjection = (() => {
   }
 
   return {
+    mv3Callbacks,
     register(scriptBuilder) {
       if (scriptBuilders.size === 0) listen(true);
       scriptBuilders.add(scriptBuilder);

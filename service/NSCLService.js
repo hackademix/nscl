@@ -18,14 +18,19 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// depends on nscl/common/Messages.js
+// depends on /nscl/common/Messages.js
+// depends on /nscl/service/Scripting.js
+
 "use strict";
 Messages.addHandler("NSCLService", {
   async exitFullscreen(msg, {tabId}) {
-    await browser.tabs.executeScript(tabId, {
-      code: "try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {}",
-      matchAboutBlank: true,
-      allFrames: true,
+    await Scripting.executeScript({
+      target: {tabId},
+      func() {
+        try {
+          if (document.fullscreenElement) document.exitFullscreen();
+        } catch (e) {}
+      },
     });
   }
 });

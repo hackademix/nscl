@@ -19,7 +19,7 @@
  */
 
 "use strict";
-{
+(() => {
   let requiredCORS = !UA.isMozilla;
 
   let enabled = new Map();
@@ -71,16 +71,25 @@
     return info;
   }
 
+  if (!UA.isMozilla) {
+    console.warn("Cannot patch CORS header for prefetchCSSResource. TODO: use DNR if possible.");
+    return;
+  }
 
-  let allCssFilter =  {
+  const allCssFilter =  {
     urls: ['<all_urls>'],
     types: ['stylesheet']
   };
 
-  let options = ['blocking'];
-  browser.webRequest.onBeforeRequest.addListener(r => {
-    corsInfo(r); // needed to cache corseInfo keying by requestId, instead of URL w/ #hash
-  }, allCssFilter, options);
+  const options = ["blocking"];
+  try {
+    browser.webRequest.onBeforeRequest.addListener(r => {
+      corsInfo(r); // needed to cache corseInfo keying by requestId, instead of URL w/ #hash
+    }, allCssFilter, options);
+  } catch (e) {
+    console.error(e);
+
+  }
 
   options.push('requestHeaders');
   browser.webRequest.onBeforeSendHeaders.addListener(r => {
@@ -145,4 +154,4 @@
   for (let ev of ["onCompleted", "onErrorOccurred"]) {
     browser.webRequest[ev].addListener(cleanup, allCssFilter);
   }
-}
+})();

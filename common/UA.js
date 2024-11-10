@@ -52,4 +52,6 @@
     mobile,
     DEV: true, // DEV_ONLY
   };
+
+  browser.action ??= browser.browserAction;
 }

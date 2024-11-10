@@ -30,6 +30,7 @@ var PlaceHolder = (() => {
       let theme;
       try {
         theme = await Messages.send("getTheme");
+        console.debug("getTheme returned", theme); // DEV_ONLY
         for (let replacement of [...document.querySelectorAll(SELECTOR)]) {
           this.update(replacement);
         }
@@ -39,11 +40,13 @@ var PlaceHolder = (() => {
       return Object.entries(theme || {});
     },
     async update(replacement) {
+      replacement?.classList.toggle("no-theme", true);
       this._initializing ||= this._init();
       if (replacement) {
         for (const [className, toggle] of [...await this._initializing]) {
           replacement.classList.toggle(className, toggle);
         }
+        replacement?.classList.toggle("no-theme", false);
       }
     }
   };

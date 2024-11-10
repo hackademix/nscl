@@ -19,7 +19,8 @@
  */
 
 "use strict";
-class Ver {
+
+globalThis.Ver ??= class {
   constructor(version) {
     if (version instanceof Ver) {
       this.versionString = version.versionString;
@@ -34,7 +35,8 @@ class Ver {
   }
   compare(other) {
     if (!(other instanceof Ver)) other = new Ver(other);
-    let p1 = this.parts, p2 = other.parts;
+    let p1 = this.parts,
+      p2 = other.parts;
     let maxParts = Math.max(p1.length, p2.length);
     for (let j = 0; j < maxParts; j++) {
       let s1 = p1[j] || "0";
@@ -57,9 +59,11 @@ class Ver {
   static is(ver1, op, ver2) {
     let res = new Ver(ver1).compare(ver2);
 
-    return op.includes("!=") && res !== 0 ||
-      op.includes("=") && res === 0 ||
-      op.includes("<") && res === -1 ||
-      op.includes(">") && res === 1;
+    return (
+      (op.includes("!=") && res !== 0) ||
+      (op.includes("=") && res === 0) ||
+      (op.includes("<") && res === -1) ||
+      (op.includes(">") && res === 1)
+    );
   }
-}
+};

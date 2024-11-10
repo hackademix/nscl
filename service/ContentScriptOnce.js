@@ -33,7 +33,7 @@ var ContentScriptOnce = (() => {
 
       let scripts = requestMap.get(id);
       if (scripts) {
-        window.setTimeout(() => {
+        self.setTimeout(() => {
           requestMap.delete(id);
           for (let s of scripts) s.unregister();
         }, 0);

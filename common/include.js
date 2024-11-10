@@ -18,7 +18,7 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-var include = (() =>
+globalThis.include ||= (() =>
 {
   if (self.importScripts) {
     const imported = new Set();
@@ -28,7 +28,7 @@ var include = (() =>
           include(s);
         }
       } else if (!imported.has(src)) {
-        console.debug("Importing", src); // DEV_ONLY
+        console.debug("Importing ", src); // DEV_ONLY
         importScripts(src);
         imported.add(src);
       }
@@ -40,20 +40,33 @@ var include = (() =>
       const {scripts} = background;
       // prevent self importing
       imported.add(scripts.find(s => s.endsWith("common/include.js")));
+      globalThis.include = include;
       include(scripts);
       // MV3 service worker needs lazy scripts to be pre-imported in the install event,
       // https://issues.chromium.org/issues/40760920#comment11
       addEventListener("install", ev => {
         include(scripts);
-        const rx = /\bawait\s*include\s*\(\s*(["[][^)]+)/g;
-        ev.waitUntil((async () => {
+        const rx = /(?:\bawait)?\s+include\s*\(\s*(["[][^)]+)/g;
+        ev.waitUntil((async function recursive(scripts) {
           for (const src of scripts) {
-            const code = await (await fetch(src)).text();
-            for (let [, args] of code.matchAll(rx)) {
-              include(JSON.parse(args));
+            try {
+              const code = await (await fetch(src)).text();
+              for (let [, args] of code.matchAll(rx)) {
+                let lazyScripts = JSON.parse(args);
+                lazyScripts = (Array.isArray(lazyScripts) ? lazyScripts : [lazyScripts])
+                  .filter(src => !imported.has(src));
+                if (!lazyScripts.length) {
+                  continue;
+                }
+
+                include(lazyScripts);
+                await recursive(lazyScripts);
+              }
+            } catch (e) {
+              console.error(e, "Trying to include recursively", src), scripts;
             }
           }
-        })());
+        })(scripts));
       });
     }
 

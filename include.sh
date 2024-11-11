@@ -31,10 +31,24 @@ filter_inclusions() {
   shopt -s globstar nullglob
   for f in $(grep -Eho '\bnscl/[0-9a-zA-Z_/-]+\.js' **/*.{js,html} "$@" | sort | uniq); do
     if ! [[ -f "$TARGET/$f" ]]; then
-      nscl_curdir="$TARGET/$(dirname "$f")"
+      nscl_srcdir="$(dirname "$f")"
+      # create symlink to actual file if this is a MAIN world alias
+      if [[ $nscl_srcdir = */main && ! -f "$SRC/$f" ]]; then
+        fname=$(basename $f)
+        for alias_dir in */content */common */lib ; do
+          echo "$alias_dir $SRC/$alias_dir/$fname"
+          if [[ -f "$SRC/$alias_dir/$fname" ]]; then
+            symlink_src="../$(basename $alias_dir)/$fname"
+            echo "Creating symlink in $nscl_srcdir: $symlink_src -> $SRC/$f..."
+            ln -s "$symlink_src" "$SRC/$f"
+            break
+          fi
+        done
+      fi
+      nscl_curdir="$TARGET/$nscl_srcdir"
       mkdir -p "$nscl_curdir"
       cp -p "$SRC/$f" "$nscl_curdir"
-      echo "Including $f. in $nscl_curdir"
+      echo "Including $f in $nscl_curdir"
     else
       echo >&2 "$TARGET/$f exists!"
     fi

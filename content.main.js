@@ -18,15 +18,14 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-console.log("NoScript Commons Library content script", Date.now(), document.readyState, document.documentElement.outerHTML);
+console.log("NoScript Commons Library main world script", Date.now(), document.readyState, document.documentElement.outerHTML);
 
 let port = WorldsHub.connect("content", {
   onConnect: port => {
-    console.log("Isolated content.js sent 'ping', content.main.js returns", port.postMessage("ping"));
+    console.log("content.main.js connected and sent 'ping', isolated content.js returns", port.postMessage("ping"));
   },
   onMessage: m => {
-    console.log("Isolated content.js got message", m);
+    console.log("content.main.js got message", m);
     if (m === "ping") return "pong";
   },
 });
-

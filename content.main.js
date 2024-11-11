@@ -23,9 +23,10 @@
 
 console.log("NoScript Commons Library main world script", Date.now(), document.readyState, document.documentElement.outerHTML);
 
-const port = Worlds.connect("content", {
+Worlds.connect("content", {
   onConnect: port => {
-    console.log("content.main.js connected and sent 'ping', isolated content.js returns", port.postMessage("ping"));
+    console.log("content.main.js connected and sent 'ping', isolated content.js returns",
+      port.postMessage("ping"));
   },
   onMessage: m => {
     console.log("content.main.js got message", m);

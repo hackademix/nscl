@@ -60,12 +60,27 @@
       "run_at": "document_start",
       "matches": ["<all_urls>"],
       "match_about_blank": true,
+      "match_origin_as_fallback": true,
       "all_frames": true,
       "js": [
         "/lib/browser-polyfill.js",
         "/common/uuid.js",
         "/common/SyncMessage.js",
-	      "content.js"
+        "/content/Worlds.js",
+	      "/content.js"
+      ]
+    },
+    {
+      "run_at": "document_start",
+      "matches": ["<all_urls>"],
+      "match_about_blank": true,
+      "match_origin_as_fallback": true,
+      "all_frames": true,
+      "world": "MAIN",
+      "js": [
+        "/main/uuid.js",
+        "/main/Worlds.js",
+	      "/content.main.js"
       ]
     }
   ],

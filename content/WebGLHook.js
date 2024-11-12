@@ -18,7 +18,7 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// depends on nscl/content/patchWindow.js
+// depends on nscl/content/Worlds.js
 // depends on nscl/content/patchWorkers.js
 
 "use strict";
@@ -28,54 +28,6 @@ ns.on("capabilities", event => {
       !("HTMLCanvasElement" in window && document.createElement("canvas").getContext("webgl"))) {
     debug(`WebGLHook bailing out, no need to block webgl  on ${document.URL}.`); // DEV_ONLY
     return;
-  }
-
-  function modifyGetContext(scope, {port, xray}) {
-    let dispatchEvent = EventTarget.prototype.dispatchEvent;
-    let { Event } = scope;
-    for (let canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
-      if (!(canvas in scope)) continue;
-
-      // CAVEAT:
-      // we must use the X-Ray wrapper from window/globalThis for instanceof,
-      // but proxy the wrapped getContext method from unprivileged scope, see
-      // https://forums.informaction.com/viewtopic.php?p=104382
-
-      const CanvasClass = globalThis[canvas];
-      // globalThis future-proofs us for when we dare patchWorkers()
-
-      const getContext = xray.getSafeMethod(scope[canvas].prototype, "getContext");
-
-      const MAX_CONSECUTIVE = 20;
-      let consecutive = 0;
-      let lastTime = 0;
-      let panic = false;
-      const handler = cloneInto({
-        apply: function(targetObj, thisArg, argumentsList) {
-          debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${canvas}, ${canvas?.parentElement}`);
-          if (thisArg instanceof CanvasClass && /webgl/i.test(argumentsList[0])) {
-            if (panic) {
-              return null;
-            }
-            const target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
-            const t = Date.now();
-            if (t - lastTime < 5 && consecutive++ > MAX_CONSECUTIVE) {
-              console.error("Too many consecutive blocked webgl contexts, trying to break the loop.");
-              panic = true;
-              port.postMessage("panic");
-            } else {
-              port.postMessage("notify", target);
-              lastTime = t;
-            }
-            return null;
-          }
-          return getContext.call(thisArg, ...argumentsList);
-        }
-      }, scope, {cloneFunctions: true});
-
-      const proxy = new scope.Proxy(getContext, handler);
-      scope[canvas].prototype.getContext = proxy;
-    }
   }
 
   const notifyWebGL = canvas => {
@@ -112,22 +64,29 @@ ns.on("capabilities", event => {
     notifyWebGL(target);
   }
 
-  let port = patchWindow(modifyGetContext);
-  port.onMessage = (msg, {target}) => {
-    debug(`WebGLHook msg: ${msg}, target: ${target}`);
-    switch(msg) {
-      case "notify":
-        notifyWebGL(target);
-        break;
-      case "panic":
-        panicAbort();
-        break;
+  Worlds.connect("WebGLHook", {
+    onConnect(port) {
+      debug(`WebGLHook connected, sending patchGetContext`); // DEV_ONLY
+      port.postMessage("patchGetContext");
+    },
+    onMessage(msg, {port, event}) {
+      const {target} = event;
+      debug(`WebGLHook msg: ${msg}, target: ${target}`); // DEV_ONLY
+      switch(msg) {
+        case "notify":
+          notifyWebGL(target);
+          break;
+        case "panic":
+          panicAbort();
+          break;
+      }
     }
-  }
+  });
+
 
   debug(`WebGLHook installed on window ${document.URL}.`);
 
-  if (!(globalThis.OffscreenCanvas && new OffscreenCanvas(0,0).getContext("webgl"))) {
+  if (true || !(globalThis.OffscreenCanvas && new OffscreenCanvas(0,0).getContext("webgl"))) {
     debug(`WebGLHook: no OffScreenCanvas+webgl, no need to patch workers  on ${document.URL}.`); // DEV_ONLY
     return;
   }

@@ -21,7 +21,14 @@
 "use strict";
 
 globalThis.Worlds ||= (() => {
-  const MY_ID = "__WorldsHelperPort__";
+
+  const pristine = originalObj =>
+    Object.fromEntries(Object.entries(originalObj)
+      .map(([n, v]) => v.bind ? [n, v.bind(originalObj)] : [n,v]));
+
+  const console = pristine(globalThis.console);
+
+  const WORLDS_ID = "__WorldsHelperPort__";
   const ports = new Map();
 
   const { dispatchEvent, addEventListener, removeEventListener } = self;
@@ -29,139 +36,153 @@ globalThis.Worlds ||= (() => {
   const WORLD_NAMES = ["MAIN", "ISOLATED"];
   const [here, there] = self?.browser?.runtime ? WORLD_NAMES.reverse() : WORLD_NAMES;
 
-  function Port(portId, scriptId = "") {
-    this.id = portId ??= `${MY_ID}:${scriptId}:${uuid()}`;
-    console.debug(`Creating ${here}->${there} ${portId}`); // DEV_ONLY
+  class Port {
+    constructor(portId, scriptId = "") {
+      this.id = portId ??= `${WORLDS_ID}:${scriptId}:${uuid()}`;
+      console.debug(`Creating ${here}->${there} ${portId}`); // DEV_ONLY
 
-    // we need a double dispatching dance and maintaining a stack of
-    // return values / thrown errors because Chromium seals the detail object
-    // (on Firefox we could just append further properties to it...)
-    const retStack = [];
+      // we need a double dispatching dance and maintaining a stack of
+      // return values / thrown errors because Chromium seals the detail object
+      // (on Firefox we could just append further properties to it...)
+      const retStack = [];
 
-    let fire = (e, detail, target = self) => {
-      dispatchEvent.call(target, new CustomEvent(`${portId}:${e}`, {detail, composed: true}));
-    }
+      let fire = (e, detail, target = self) => {
+        dispatchEvent.call(target, new CustomEvent(`${portId}:${e}`, { detail, composed: true }));
+      };
 
-    this.postMessage = function(msg, target = self) {
-      retStack.push({});
-      let detail = {msg};
-      fire(there, detail, target);
-      let ret = retStack.pop();
-      if (ret.error) throw ret.error;
-      return ret.value;
-    };
+      this.postMessage = function (msg, target = self) {
+        retStack.push({});
+        let detail = { msg };
+        fire(there, detail, target);
+        let ret = retStack.pop();
+        if (ret.error) throw ret.error;
+        return ret.value;
+      };
 
-    const listeners = {
-      [`${portId}:${here}`]: event => {
-        if (typeof this.onConnect === "function" && !this.connected) {
-          this.connected = true;
-          try {
-            this.onConnect(this);
-          } catch (error) {
-            console.error(error);
+      const listeners = {
+        [`${portId}:${here}`]: event => {
+          this.connect();
+          if (typeof this.onMessage === "function" && event.detail) {
+            let ret = {};
+            try {
+              ret.value = this.onMessage(event.detail.msg, {
+                port: this,
+                event,
+              });
+            } catch (error) {
+              ret.error = error;
+            }
+            fire(`return:${there}`, ret);
           }
-        }
-        if (typeof this.onMessage === "function" && event.detail) {
-          let ret = {};
-          try {
-            ret.value = this.onMessage(event.detail.msg, event);
-          } catch (error) {
-            ret.error = error;
+        },
+
+        [`${portId}:return:${here}`]: event => {
+          let { detail } = event;
+          if (detail && retStack.length) {
+            retStack[retStack.length - 1] = detail;
           }
-          fire(`return:${there}`, ret);
+        },
+      };
+
+      for (let [name, handler] of Object.entries(listeners)) {
+        addEventListener.call(self, name, handler, true);
+      }
+
+      const NOP = () => { };
+
+      this.dispose = () => {
+        fire = NOP;
+        this.onConnect = this.onMessage = null;
+        this.connected = false;
+        for (let [name, handler] of Object.entries(listeners)) {
+          removeEventListener.call(self, name, handler, true);
         }
-      },
+        this.disposed = true;
+      };
 
-      [`${portId}:return:${here}`]:  event => {
-        let {detail} = event;
-        if (detail && retStack.length) {
-         retStack[retStack.length -1] = detail;
-        }
-      },
-    }
-
-    for (let [name, handler] of Object.entries(listeners)) {
-      addEventListener.call(self, name, handler, true);
-    }
-
-    const NOP = () => {};
-
-    this.dispose = () => {
-      fire = NOP;
       this.onConnect = this.onMessage = null;
       this.connected = false;
-      for (let [name, handler] of Object.entries(listeners)) {
-        removeEventListener.call(self, name, handler, true);
-      }
-      this.disposed = true;
+      this.disposed = false;
+
+      this.mergeHandlers = function (handlers) {
+        if (!handlers) {
+          return !!(this.onMessage && this.onConnect);
+        }
+        this.onMessage = handlers.onMessage || NOP;
+        this.onConnect = handlers.onConnect || NOP;
+        return true;
+      };
     }
 
-    this.onConnect = this.onMessage = null;
-    this.connected = false;
-    this.disposed = false;
-
-    this.mergeHandlers = function(handlers) {
-      if (!handlers) return;
-      this.onMessage = handlers.onMessage || NOP;
-      this.onConnect = handlers.onConnect || NOP;
+    connect() {
+      if (typeof this.onConnect === "function" && !this.connected) {
+        this.connected = true;
+        try {
+          this.onConnect(this);
+        } catch (error) {
+          console.error(error);
+        }
+        return true;
+      }
+      return false;
     }
   }
 
   const Worlds = {
-    connect(scriptId, handlers) {
+    connect(scriptId, handlers, portId) {
       let port = ports.get(scriptId);
-      if (port) {
-        port.mergeHandlers(handlers);
-        if (port.onConnect) {
-          if (!port.connected) {
-            port.connected = true;
-            try {
-              port.onConnect(port);
-            } catch(e) {
-              console.error(e);
-            }
-          }
-          if (!(ports.values().some(p => !p.connected))) {
-            this.dispose();
-          }
-          return port;
+
+      const isReady = !!portId;
+      if (!port) {
+        portId ??= worldsPort.postMessage({id: "connect", scriptId})
+        port = new Port(portId, scriptId);
+        ports.set(scriptId, port);
+      }
+
+      if (
+        port.mergeHandlers(handlers) &&
+        (isReady ||
+          worldsPort.postMessage({
+            id: "ready",
+            scriptId,
+            portId: port.id,
+          }) === port.id)
+      ) {
+        port.connect();
+        if (!ports.values().some(p => !p.connected)) {
+          this.dispose();
         }
       }
 
-      const portId = myPort.postMessage({id: "connect", scriptId})
-      port ||= new Port(portId, scriptId);
-      ports.set(scriptId, port);
-      port.mergeHandlers(handlers);
-
-      if (portId && port.onMessage) {
-        myPort.postMessage({id: "ready", scriptId});
-        this.connect(scriptId);
-      }
       return port;
     },
     dispose() {
-      myPort.postMessage({id: "dispose"});
-      myPort.dispose();
+      worldsPort.postMessage({id: "dispose"});
+      worldsPort.dispose();
       if (globalThis.Worlds === this) {
         delete globalThis.Worlds;
         console.debug(`Disposed ${here} Worlds`, document.documentElement.outerHTML); // DEV_ONLY
       }
-    }
+    },
+    main: {
+      console,
+      pristine,
+    },
   };
 
-  const myPort = new Port(MY_ID);
+  const worldsPort = new Port(WORLDS_ID);
   let bootstrapped = false;
-  myPort.onMessage = (msg => {
+  worldsPort.onMessage = (msg => {
     console.debug(`${here} got message`, msg);
     switch(msg.id) {
       case "dispose":
-        myPort.dispose(); // prevent infinite message loop
+        worldsPort.dispose(); // prevent infinite message loop
         Worlds.dispose();
         break;
       case "connect":
         return ports.get(msg.scriptId)?.id;
       case "ready":
-        return Worlds.connect(msg.scriptId).id;
+        return Worlds.connect(msg.scriptId, null, msg.portId).id;
       case "bootstrap":
         if (bootstrapped) return;
         bootstrapped = true;
@@ -172,7 +193,7 @@ globalThis.Worlds ||= (() => {
   });
 
   {
-    const bootstrap = myPort.postMessage({id: "bootstrap"});
+    const bootstrap = worldsPort.postMessage({id: "bootstrap"});
     if (bootstrap?.ports) {
       for(const [scriptId, portId] of bootstrap.ports) {
         console.debug(`${here} got ${scriptId} ${portId} as bootstrap`); // DEV_ONLY
@@ -181,16 +202,8 @@ globalThis.Worlds ||= (() => {
     }
   }
 
-  Object.freeze(Worlds);
+  // just in case, dispose before any page script can run
+  setTimeout(() => Worlds.dispose(), 0);
 
-  // safety net, dispose before any page script can run
-  const observer = new MutationObserver(function() {
-    this.disconnect();
-    Worlds.dispose();
-  });
-  observer.observe(document.documentElement, {
-    childList: true,
-  });
-
-  return Worlds;
+  return Object.freeze(Worlds);
 })();

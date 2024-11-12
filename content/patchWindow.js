@@ -468,6 +468,7 @@ if (patchWindow.xrayEnabled) {
 
 Object.defineProperty(patchWindow, "disabled", {
   get() {
+    if (!UA.isMozilla) return true;
     if (typeof ns === "object" && ns) {
       if (ns.allows) {
         const value = !ns.allows("script");

@@ -100,7 +100,7 @@ var Sites = (() => {
         siteKey = url.origin;
         if (siteKey === "null") {
           ([siteKey] = site.split(/[?#]/)); // drop any search / hash segment
-        } else if (path !== '/') {
+        } else if (path !== '/' || site?.endsWith('/')) {
           siteKey += path;
         }
       }

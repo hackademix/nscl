@@ -18,8 +18,6 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// depends on nscl/common/SyncMessage.js
-
 "use strict";
 {
   let patchesByTab = new Map();

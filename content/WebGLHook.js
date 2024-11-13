@@ -86,7 +86,7 @@ ns.on("capabilities", event => {
 
   debug(`WebGLHook installed on window ${document.URL}.`);
 
-  if (true || !(globalThis.OffscreenCanvas && new OffscreenCanvas(0,0).getContext("webgl"))) {
+  if (!(globalThis.OffscreenCanvas && new OffscreenCanvas(0,0).getContext("webgl"))) {
     debug(`WebGLHook: no OffScreenCanvas+webgl, no need to patch workers  on ${document.URL}.`); // DEV_ONLY
     return;
   }

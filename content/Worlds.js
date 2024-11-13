@@ -31,10 +31,42 @@ globalThis.Worlds ||= (() => {
   const WORLDS_ID = "__WorldsHelperPort__";
   const ports = new Map();
 
-  const { dispatchEvent, addEventListener, removeEventListener } = self;
+  const { dispatchEvent, addEventListener, removeEventListener, Error } = self;
 
   const WORLD_NAMES = ["MAIN", "ISOLATED"];
   const [here, there] = self?.browser?.runtime ? WORLD_NAMES.reverse() : WORLD_NAMES;
+
+  const stackGetter = Object.getOwnPropertyDescriptor(Error.prototype, "stack")?.get
+    || function() { return this.stack };
+  function validateStack() {
+    try {
+      const stack = Reflect.apply(stackGetter, new Error(), []).split("\n");
+      let parseOrigin = l => l.replace(/.*[(@]([\w-]+:\/\/[^/]+\/).*/, "$1");
+      let myOrigin;
+      for (const line of stack) {
+        if (!myOrigin) {
+          if (line.includes("/Worlds.js")) {
+            myOrigin ||= parseOrigin(line);
+            if (!myOrigin) {
+              // can't find my origin, panic!
+              break;
+            }
+          }
+          continue;
+        }
+        if (myOrigin !== parseOrigin(line)) {
+          break;
+        }
+        // caller is same origin as us, everything's fine
+        return;
+      }
+      throw new Error("Unsafe call");
+    } catch (e) {
+      Worlds.dispose();
+      throw e;
+    }
+  }
+
 
   class Port {
     constructor(portId, scriptId = "") {
@@ -130,6 +162,8 @@ globalThis.Worlds ||= (() => {
 
   const Worlds = {
     connect(scriptId, handlers, portId) {
+      validateStack();
+
       let port = ports.get(scriptId);
 
       const isReady = !!portId;
@@ -149,9 +183,11 @@ globalThis.Worlds ||= (() => {
           }) === port.id)
       ) {
         port.connect();
-        if (!ports.values().some(p => !p.connected)) {
-          this.dispose();
-        }
+        queueMicrotask(() => {
+          if (!ports.values().some(p => !p.connected)) {
+            this.dispose();
+          }
+        });
       }
 
       return port;
@@ -170,7 +206,7 @@ globalThis.Worlds ||= (() => {
     },
   };
 
-  const worldsPort = new Port(WORLDS_ID);
+  let worldsPort = new Port(WORLDS_ID);
   let bootstrapped = false;
   worldsPort.onMessage = (msg => {
     console.debug(`${here} got message`, msg);
@@ -186,8 +222,16 @@ globalThis.Worlds ||= (() => {
       case "bootstrap":
         if (bootstrapped) return;
         bootstrapped = true;
+        // Switch to random portId after initial handshake, before page scripts can run
+        const swapPort = new Port(null, WORLDS_ID);
+        swapPort.mergeHandlers(worldsPort);
+        queueMicrotask(() => {
+          worldsPort.dispose();
+          worldsPort = swapPort;
+        });
         return {
           ports: [...ports].map(([scriptId, port]) => [scriptId, port.id]),
+          swapPortId: swapPort.id,
         };
     }
   });
@@ -199,6 +243,13 @@ globalThis.Worlds ||= (() => {
         console.debug(`${here} got ${scriptId} ${portId} as bootstrap`); // DEV_ONLY
         ports.set(scriptId, new Port(portId, scriptId));
       }
+    }
+    if (bootstrap?.swapPortId) {
+      // Switch to random portId after initial handshake, before page scripts can run
+      const swapPort = new Port(bootstrap.swapPortId, WORLDS_ID);
+      swapPort.mergeHandlers(worldsPort);
+      worldsPort.dispose();
+      worldsPort = swapPort;
     }
   }
 

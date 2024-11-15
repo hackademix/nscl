@@ -34,89 +34,16 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
 
   let corsSheetURLs = new Set();
   let corsSheetsByHref = new Map();
-
-  (patchWindow((win, {port, xray}) => {
-    let { StyleSheet } = win;
-    let ssProto = StyleSheet.prototype;
-    let cssProto = win.CSSStyleSheet.prototype;
-    // prevent getting fooled by redefined getters
-    let getOwnerNode = Object.getOwnPropertyDescriptor(ssProto, "ownerNode").get;
-    let postMessage = (msg, target) => {
-      if (target instanceof StyleSheet) target = getOwnerNode.apply(target);
-      return target && port.postMessage(msg, target);
-    };
-    if (!xray.enabled) {
-      // Only for Chromium, requiring relaxed CORS and therefore
-      // needing cssRules protection for "privileged" cross-site links.
-      for (let prop of ["rules", "cssRules"]) {
-        let originalGetter = Object.getOwnPropertyDescriptor(cssProto, prop).get;
-        exportFunction(function() {
-          if (!postMessage("accessRules", this)) {
-            throw new DOMException("Security Error",
-              `Failed to read the '${prop}' property from 'CSSStyleSheet': Cannot access rules`);
-          }
-          return originalGetter.apply(this);
-        }, cssProto, {defineAs: `get ${prop}`});
+  Worlds.connect({
+    onMessage (msg, {port, event}) {
+      const {node} = event;
+      switch(msg) {
+        case "isDisabled":
+          let shadow = getShadow(node);
+          return shadow.keepDisabled || (node.sheet && getShadow(node.sheet).keepDisabled);
+        case "accessRules":
+          return !(node.sheet && node.sheet.href && corsSheetURLs.has(node.sheet.href));
       }
-    }
-    let mmProto = win.MediaList.prototype;
-    let { appendMedium, deleteMedium, item } = mmProto;
-    // make disable property temporarily readonly if tagged as keepDisabled
-    for (let p of [ssProto, win.HTMLStyleElement.prototype, win.HTMLLinkElement.prototype]) {
-      let prop = "media";
-      let des = xray.getSafeDescriptor(p, prop, "get");
-      exportFunction(function(value) {
-        if (postMessage("isDisabled", this)) {
-          if (this instanceof StyleSheet) {
-            return new Proxy(this.media, {
-              get(target, prop, receiver) {
-                if (typeof target[prop] === "function") {
-                  return new Proxy(target[prop], {
-                    apply(target, that, args) {
-                      if (target === appendMedium || target === deleteMedium) {
-                        return;
-                      }
-                      if (target === item) {
-                        return null;
-                      }
-                      return Reflect.apply(...arguments);
-                    }
-                  });
-                }
-                switch(prop) {
-                  case "length":
-                    return 0;
-                  case "mediaText":
-                    return ""
-                }
-                return Reflect.get(...arguments);
-              },
-              set(target, prop, newVal) {
-                switch(prop) {
-                  case "mediaText": return true;
-                }
-                return Reflect.set(...arguments);
-             }
-            });
-          }
-          return "";
-        }
-        return des.get.call(this, value);
-      }, p, {defineAs: `get ${prop}`});
-      exportFunction(function(value) {
-        if (postMessage("isDisabled", this)) {
-          return value;
-        }
-        return des.set.call(this, value);
-      }, p, {defineAs: `set ${prop}`});
-    }
-  }).onMessage = (msg, {target: node}) => {
-    switch(msg) {
-      case "isDisabled":
-        let shadow = getShadow(node);
-        return shadow.keepDisabled || (node.sheet && getShadow(node.sheet).keepDisabled);
-      case "accessRules":
-        return !(node.sheet && node.sheet.href && corsSheetURLs.has(node.sheet.href));
     }
   });
 

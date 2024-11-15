@@ -56,7 +56,7 @@ globalThis.patchWorkers = (() => {
   return patch => {
 
     if (patches.size === 0) {
-      Worlds.connect("patchWorkers", {
+      Worlds.connect({
         onMessage(msg, {port}) {
           switch(msg.type) {
             case "getPatch":

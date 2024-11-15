@@ -22,9 +22,7 @@
 
 if (globalThis.Worlds?.main) {
   const {Function, Object, Proxy, Promise, Reflect, WeakMap} = globalThis;
-  const {console} = Worlds.main;
-
-  Object.freeze(Object.assign(Worlds.main, {
+  const {console, exportFunction} = Object.freeze(Object.assign(Worlds.main, {
     exportFunction(func, targetObject, {defineAs, original} = {}) {
       try {
         let  [propDef, getOrSet, propName] = defineAs && /^([gs]et)(?:\s+(\w+))$/.exec(defineAs) || [null, null, defineAs];

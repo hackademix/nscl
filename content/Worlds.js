@@ -20,7 +20,59 @@
 
 "use strict";
 
-globalThis.Worlds ||= (() => {
+{
+  const isMainWorld = !(self?.browser?.runtime);
+  let ended = false;
+
+  const { dispatchEvent, addEventListener, removeEventListener,
+          Object, Error, Reflect } = self;
+
+  const getStack = (() => {
+    if ("stackTraceLimit" in Error) {
+      // Prevent V8's flexibility to get in the way
+      const invariants = ["stackTraceLimit", "prepareStackTrace"];
+      Error.stackTraceLimit = 10;
+      delete Error.prepareStackTrace;
+      const replay = [];
+      const backup = Object.assign({}, Error);
+      const ifSafe = (key, doIt) => {
+        if (ended || !invariants.includes(key)) {
+          return doIt();
+        }
+        replay.push(doIt);
+        return doIt(backup);
+      };
+
+      const handler = {
+        get(target, key, receiver) {
+          if (ended) {
+            for (const doIt of replay) {
+              try {
+                doIt();
+              } catch (e) {}
+            }
+            replay.length = 0;
+          } else if (invariants.includes(key)) {
+            return backup[key];
+          }
+          return Reflect.get(target, key, receiver);
+        }
+      };
+      for (const trap of ["set", "deleteProperty", "defineProperty"]) {
+        handler[trap] = (target, key, ...args) =>
+          ifSafe(key, (obj = target) => Reflect[trap](obj, key, ...args));
+      }
+
+      globalThis.Error = new Proxy(Error, handler);
+    }
+    const stackGetter = Object.getOwnPropertyDescriptor(Error.prototype, "stack")?.get
+      || function() { return this.stack };
+    return () => {
+      const stack = Reflect.apply(stackGetter, new Error(), []).split("\n");
+      stack.splice(0, 2); // Remove top "Error" and this very  call site
+      return stack;
+    }
+  })();
 
   const pristine = originalObj =>
     Object.fromEntries(Object.entries(originalObj)
@@ -31,42 +83,8 @@ globalThis.Worlds ||= (() => {
   const WORLDS_ID = "__WorldsHelperPort__";
   const ports = new Map();
 
-  const { dispatchEvent, addEventListener, removeEventListener, Error } = self;
-
   const WORLD_NAMES = ["MAIN", "ISOLATED"];
-  const [here, there] = self?.browser?.runtime ? WORLD_NAMES.reverse() : WORLD_NAMES;
-
-  const stackGetter = Object.getOwnPropertyDescriptor(Error.prototype, "stack")?.get
-    || function() { return this.stack };
-  function validateStack() {
-    try {
-      const stack = Reflect.apply(stackGetter, new Error(), []).split("\n");
-      let parseOrigin = l => l.replace(/.*[(@]([\w-]+:\/\/[^/]+\/).*/, "$1");
-      let myOrigin;
-      for (const line of stack) {
-        if (!myOrigin) {
-          if (line.includes("/Worlds.js")) {
-            myOrigin ||= parseOrigin(line);
-            if (!myOrigin) {
-              // can't find my origin, panic!
-              break;
-            }
-          }
-          continue;
-        }
-        if (myOrigin !== parseOrigin(line)) {
-          break;
-        }
-        // caller is same origin as us, everything's fine
-        return;
-      }
-      throw new Error("Unsafe call");
-    } catch (e) {
-      Worlds.dispose();
-      throw e;
-    }
-  }
-
+  const [here, there] = isMainWorld ? WORLD_NAMES : WORLD_NAMES.reverse();
 
   class Port {
     constructor(portId, scriptId = "") {
@@ -123,13 +141,15 @@ globalThis.Worlds ||= (() => {
       const NOP = () => { };
 
       this.dispose = () => {
+        if (this.disposed) return;
+        this.disposed = true;
         fire = NOP;
         this.onConnect = this.onMessage = null;
         this.connected = false;
         for (let [name, handler] of Object.entries(listeners)) {
           removeEventListener.call(self, name, handler, true);
         }
-        this.disposed = true;
+        console.debug(`Disposed ${this}`); // DEV_ONLY
       };
 
       this.onConnect = this.onMessage = null;
@@ -158,47 +178,60 @@ globalThis.Worlds ||= (() => {
       }
       return false;
     }
+
+    toString() {
+      return `port ${this.id}@${here}}`;
+    }
   }
 
+  const connectWorlds = (scriptId, handlers, portId) => {
+    let port = ports.get(scriptId);
+
+    const isReady = !!portId;
+    if (!port) {
+      portId ??= worldsPort.postMessage({id: "connect", scriptId})
+      port = new Port(portId, scriptId);
+      ports.set(scriptId, port);
+    }
+
+    if (
+      port.mergeHandlers(handlers) &&
+      (isReady ||
+        worldsPort.postMessage({
+          id: "ready",
+          scriptId,
+          portId: port.id,
+        })?.canHandle)
+    ) {
+      port.connect();
+      queueMicrotask(() => {
+        if (!ports.values().some(p => !p)) {
+          endWorlds();
+        }
+      });
+    }
+
+    return port;
+  };
+
+  const endWorlds = () => {
+    worldsPort.postMessage({id: "end"});
+    worldsPort.dispose();
+    ended = true;
+    if (globalThis.Worlds?.end === Worlds.end) {
+      delete globalThis.Worlds;
+      console.debug(`End of the ${here} World connector.`, document.documentElement.outerHTML); // DEV_ONLY
+    }
+  };
+
   const Worlds = {
-    connect(scriptId, handlers, portId) {
-      validateStack();
-
-      let port = ports.get(scriptId);
-
-      const isReady = !!portId;
-      if (!port) {
-        portId ??= worldsPort.postMessage({id: "connect", scriptId})
-        port = new Port(portId, scriptId);
-        ports.set(scriptId, port);
+    connect(handlers) {
+      const scriptMatch = getStack()[1]?.match(/\/(\w+)(?:\.main)?\.js\b/);
+      const scriptId = scriptMatch && scriptMatch[1];
+      if (scriptId) {
+        return connectWorlds(scriptId, handlers);
       }
-
-      if (
-        port.mergeHandlers(handlers) &&
-        (isReady ||
-          worldsPort.postMessage({
-            id: "ready",
-            scriptId,
-            portId: port.id,
-          }) === port.id)
-      ) {
-        port.connect();
-        queueMicrotask(() => {
-          if (!ports.values().some(p => !p.connected)) {
-            this.dispose();
-          }
-        });
-      }
-
-      return port;
-    },
-    dispose() {
-      worldsPort.postMessage({id: "dispose"});
-      worldsPort.dispose();
-      if (globalThis.Worlds === this) {
-        delete globalThis.Worlds;
-        console.debug(`Disposed ${here} Worlds`, document.documentElement.outerHTML); // DEV_ONLY
-      }
+      throw new Error(`Can't identify scripts to connect on the stack ${stack.join("\n")}`);
     },
     main: {
       console,
@@ -211,14 +244,15 @@ globalThis.Worlds ||= (() => {
   worldsPort.onMessage = (msg => {
     console.debug(`${here} got message`, msg);
     switch(msg.id) {
-      case "dispose":
+      case "end":
         worldsPort.dispose(); // prevent infinite message loop
-        Worlds.dispose();
+        endWorlds();
         break;
       case "connect":
         return ports.get(msg.scriptId)?.id;
       case "ready":
-        return Worlds.connect(msg.scriptId, null, msg.portId).id;
+        const port = connectWorlds(msg.scriptId, null, msg.portId);
+        return { canHandle: !!(port.onMessage || port.onConnect) };
       case "bootstrap":
         if (bootstrapped) return;
         bootstrapped = true;
@@ -230,7 +264,7 @@ globalThis.Worlds ||= (() => {
           worldsPort = swapPort;
         });
         return {
-          ports: [...ports].map(([scriptId, port]) => [scriptId, port.id]),
+          ports: [...ports].map(([scriptId, port]) => [scriptId, port?.id]),
           swapPortId: swapPort.id,
         };
     }
@@ -241,7 +275,7 @@ globalThis.Worlds ||= (() => {
     if (bootstrap?.ports) {
       for(const [scriptId, portId] of bootstrap.ports) {
         console.debug(`${here} got ${scriptId} ${portId} as bootstrap`); // DEV_ONLY
-        ports.set(scriptId, new Port(portId, scriptId));
+        ports.set(scriptId, portId ? new Port(portId, scriptId) : null);
       }
     }
     if (bootstrap?.swapPortId) {
@@ -253,8 +287,70 @@ globalThis.Worlds ||= (() => {
     }
   }
 
-  // just in case, dispose before any page script can run
-  setTimeout(() => Worlds.dispose(), 0);
+  Object.freeze(Worlds);
 
-  return Object.freeze(Worlds);
-})();
+  if (isMainWorld) {
+     // proxy the API to validate access (allow only from the same extension)
+    const validateStack = () => {
+      if (worldsPort.disposed) return;
+      try {
+        const stack = getStack();
+        console.debug("Validating stack", stack); // DEV_ONLY
+        let parseOrigin = l => l.replace(/^\s*at (?:.*[(@])?([\w-]+:\/\/[^/]+\/).*/, "$1");
+        let myOrigin;
+        for (const line of stack) {
+          if (!myOrigin) {
+            if (line.includes("/Worlds.js")) {
+              myOrigin ||= parseOrigin(line);
+              if (!myOrigin) {
+                // can't find my origin, panic!
+                throw new Error(`Cannot find Worlds' origin: ${line}`);
+              }
+            }
+            continue;
+          }
+          if (myOrigin !== parseOrigin(line)) {
+            throw new Error(`Unsafe call to ${myOrigin} from ${line} (STACK ${stack.join("\n")} /STACK)`);
+          }
+        }
+        // The whole call stack is same origin, everything's fine
+      } catch (e) {
+        endWorlds();
+        throw e;
+      }
+    }
+
+    const safeWorlds = new Proxy(Worlds, {
+      get(src, key) {
+        validateStack();
+        const val = src[key];
+        return val;
+      },
+    });
+    Object.defineProperty(globalThis, "Worlds", {
+      configurable: true,
+      get() {
+        try {
+          validateStack();
+        } catch (e) {
+          console.error(e);
+          return;
+        }
+        return safeWorlds;
+      }
+    });
+  } else {
+    globalThis.Worlds = Worlds;
+    // fetch connectable script IDs from manifest
+    browser.runtime.getManifest()
+      .content_scripts.filter(cs => cs.world === "MAIN")
+      .map(cs => cs.js.map(js => js.match(/\/(\w+)\.main\.js\b/))
+      .filter(m => m).forEach(([m, scriptId]) => {
+        if (!ports.has(scriptId)) {
+          ports.set(scriptId, null);
+        }
+      }));
+  }
+  // just in case, end the Worlds before any page script can run
+  setTimeout(endWorlds, 0);
+}

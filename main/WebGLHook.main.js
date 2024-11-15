@@ -66,7 +66,7 @@
     }
   }
 
-  Worlds.connect("WebGLHook", {
+  Worlds.connect({
     onMessage(msg, {port}) {
       console.debug("WebGLHook received message", msg); // DEV_ONLY
       switch(msg) {

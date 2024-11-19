@@ -28,10 +28,12 @@ var TabTies = (() => {
     "TabTies",
     {
       afterLoad(data) {
-        if (data) return map = new Map(data)
+        if (data) return map = new Map(data.map(([tabId, ties]) => [tabId, new Set(ties)]));
       },
       beforeSave() {
-        return [...map.entries()]
+        return [...map.entries()
+          .filter(([, ties]) => ties?.[Symbol.iterator])
+          .map(([tabId, ties]) => [tabId, [...ties]])];
       },
     }
   );
@@ -44,8 +46,8 @@ var TabTies = (() => {
       .concat([...getTiesWithSelf(tabId2)]));
 
     for (let tid of allTies) map.set(tid, allTies);
+    debug("[TabTies] Tied", tabId1, tabId2, map); // DEV_ONLY
     session.save();
-    debug("[TabTies] Tied", tabId1, tabId2, map);
   }
 
   function cut(tabId) {
@@ -53,8 +55,8 @@ var TabTies = (() => {
     let allTies = getTiesWithSelf(tabId);
     map.delete(tabId);
     allTies.delete(tabId);
+    debug("[TabTies] Cut", tabId, map); // DEV_ONLY
     session.save();
-    debug("[TabTies] Cut", tabId, map);
   }
 
   function getTiesWithSelf(tabId) {

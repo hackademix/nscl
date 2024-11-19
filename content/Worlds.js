@@ -204,11 +204,7 @@
         })?.canHandle)
     ) {
       port.connect();
-      queueMicrotask(() => {
-        if (!ports.values().some(p => !p)) {
-          endWorlds();
-        }
-      });
+      queueMicrotask(endWorldsIfDone);
     }
 
     return port;
@@ -221,6 +217,12 @@
     if (globalThis.Worlds?.end === Worlds.end) {
       delete globalThis.Worlds;
       console.debug(`End of the ${here} World connector.`, document.documentElement.outerHTML); // DEV_ONLY
+    }
+  };
+
+  const endWorldsIfDone = () => {
+    if (!ports.values().some(p => !p)) {
+      endWorlds();
     }
   };
 
@@ -290,41 +292,47 @@
   Object.freeze(Worlds);
 
   if (isMainWorld) {
+    const url = document.URL;
      // proxy the API to validate access (allow only from the same extension)
+     let validatingStack = false;
     const validateStack = () => {
-      if (worldsPort.disposed) return;
+      if (worldsPort.disposed || validatingStack) return;
+      validatingStack = true;
       try {
         const stack = getStack();
-        console.debug("Validating stack", stack); // DEV_ONLY
-        let parseOrigin = l => l.replace(/^\s*at (?:.*[(@])?([\w-]+:\/\/[^/]+\/).*/, "$1");
-        let myOrigin;
-        for (const line of stack) {
-          if (!myOrigin) {
-            if (line.includes("/Worlds.js")) {
-              myOrigin ||= parseOrigin(line);
-              if (!myOrigin) {
-                // can't find my origin, panic!
-                throw new Error(`Cannot find Worlds' origin: ${line}`);
-              }
-            }
-            continue;
-          }
-          if (myOrigin !== parseOrigin(line)) {
-            throw new Error(`Unsafe call to ${myOrigin} from ${line} (STACK ${stack.join("\n")} /STACK)`);
-          }
+
+        // stack items are:
+        // [0] -> validateStack() itself
+        // [1] -> the callee, function / accessor to be "protected"
+        // [2] -> the caller to be validated (same origin as the extension)
+        let [myself, callee, caller = "UNKNOWN CALL SITE"] = stack;
+
+        console.debug(`Validating stack in ${url}`, stack); // DEV_ONLY
+        const parseOrigin = l => l.replace(/^\s*at (?:.*[(@])?([\w-]+:\/\/[^/]+\/).*/, "$1");
+
+        const myOrigin = myself.includes("/Worlds.js") && parseOrigin(myself);
+        if (!myOrigin)  {
+          throw new Error(`Cannot find Worlds' origin from ${myself}`);
         }
-        // The whole call stack is same origin, everything's fine
+        if (parseOrigin(callee) !== myOrigin) {
+          throw(`Callee ${callee} doesn't match origin ${myOrigin}!`);
+        }
+        if (parseOrigin(caller) !== myOrigin) {
+          throw new Error(`Unsafe call to ${myOrigin} from ${caller} (${url}, <STACK>\n${stack.join("\n")}\n</STACK>)`);
+        }
       } catch (e) {
-        endWorlds();
+        // TODO: reimplement automatic coss-frame patchWindow(), rather than delaying until done
+        endWorldsIfDone();
         throw e;
+      } finally {
+        validatingStack = false;
       }
     }
 
     const safeWorlds = new Proxy(Worlds, {
       get(src, key) {
         validateStack();
-        const val = src[key];
-        return val;
+        return src[key];
       },
     });
     Object.defineProperty(globalThis, "Worlds", {
@@ -337,6 +345,11 @@
           return;
         }
         return safeWorlds;
+      },
+      set(v) {
+        delete this.Worlds;
+        endWorldsIfDone();
+        return this.Worlds = v;
       }
     });
   } else {

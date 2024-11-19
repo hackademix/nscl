@@ -47,7 +47,12 @@ var SessionCache = (() => {
       if (!data) return;
       const {scope} = this;
       if (scope.afterLoad) {
-        data = scope.afterLoad(data);
+        try {
+          data = scope.afterLoad(data);
+        } catch (e) {
+          console.error(e, "Could not deserialize", this.storageKey, data);
+          return;
+        }
       }
       if (scope.target) {
         data = Object.assign(scope.target, data);
@@ -60,10 +65,16 @@ var SessionCache = (() => {
         queueMicrotask(async() => {
           this.#saving = false;
           const {scope} = this;
-          let data = scope.beforeSave
-            ? await scope.beforeSave(scope.target)
-            : scope.target;
-          resolve(await browser.storage.session.set({[this.storageKey]: data}));
+          let data;
+          try {
+            data = scope.beforeSave
+              ? await scope.beforeSave(scope.target)
+              : scope.target;
+            resolve(await browser.storage.session.set({[this.storageKey]: data}));
+          } catch (e) {
+            console.error(e, "Could not serialize", data, this.storageKey);
+            resolve();
+          }
         })
       });
     }

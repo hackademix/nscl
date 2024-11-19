@@ -22,7 +22,7 @@
 
 class CSP {
   static isMediaBlocker(csp) {
-    return /(?:^|[\s;])media-src (?:'none'|http:)(?:;|$)/.test(csp);
+    return /(?:^|[\s;])media-src (?:'none'|http:(?: file:)?)(?:;|$)/.test(csp);
   }
   static normalize(csp) {
     return csp.replace(/\s*;\s*/g, ';').replace(/\b(script-src\s+'none'.*?;)(?:script-src-\w+\s+'none';)+/, '$1');

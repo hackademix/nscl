@@ -36,7 +36,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   let corsSheetsByHref = new Map();
   Worlds.connect({
     onMessage (msg, {port, event}) {
-      const {node} = event;
+      const node = event.target;
       switch(msg) {
         case "isDisabled":
           let shadow = getShadow(node);

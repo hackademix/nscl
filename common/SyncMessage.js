@@ -124,11 +124,12 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
               options
             ) => {
               const DEFAULT_OPTIONS = {
+                ruleSet: "Session",
                 priority: DNR_BASE_PRIORITY + 10,
                 addRules: [],
                 removeRuleIds: []
               }
-              let { priority, addRules, removeRuleIds } = Object.assign(
+              let { ruleSet, priority, addRules, removeRuleIds } = Object.assign(
                 {},
                 DEFAULT_OPTIONS,
                 options
@@ -150,8 +151,8 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
               console.debug("Creating rule ", rule); // DEV_ONLY
 
               addRules.push(rule);
-
-              await browser.declarativeNetRequest.updateSessionRules({
+              const method = `update${ruleSet}Rules`;
+              await browser.declarativeNetRequest[method]({
                 addRules,
                 removeRuleIds,
               });
@@ -166,41 +167,47 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
             };
 
             (async () => {
-              try {
-                const allowSyncXhrRules = [
-                  "document-policy",
-                  "feature-policy",
-                ].map((header) => ({
-                  id: ++lastRuleId,
-                  priority: DNR_BASE_PRIORITY,
-                  action: {
-                    type: "modifyHeaders",
-                    responseHeaders: [{ header, operation: "remove" }],
-                  },
-                  condition: {
-                    responseHeaders: [{ header, values: ["*sync-xhr*"] }],
-                    resourceTypes: ["main_frame", "sub_frame"],
-                  },
-                }));
 
-                const oldRuleIds = (
-                  await browser.declarativeNetRequest.getSessionRules()
-                )
-                  .map((r) => r.id)
-                  .filter((id) => id >= DNR_BASE_ID);
+              const allowSyncXhrRules = [
+                "document-policy",
+                "feature-policy",
+              ].map((header) => ({
+                id: ++lastRuleId,
+                priority: DNR_BASE_PRIORITY,
+                action: {
+                  type: "modifyHeaders",
+                  responseHeaders: [{ header, operation: "remove" }],
+                },
+                condition: {
+                  responseHeaders: [{ header, values: ["*sync-xhr*"] }],
+                  resourceTypes: ["main_frame", "sub_frame"],
+                },
+              }));
 
-                await createRedirector(
-                  `|${ENDPOINT_PREFIX}*`,
-                  redirectUrl,
-                  {
+
+              for (const ruleSet of ["Dynamic", "Session"]) {
+                try {
+                  const removeRuleIds = (
+                    await browser.declarativeNetRequest[`get${ruleSet}Rules`]()
+                  )
+                    .map((r) => r.id)
+                    .filter((id) => id >= DNR_BASE_ID);
+                  const options = {
+                    ruleSet,
                     priority: DNR_BASE_PRIORITY,
                     addRules: allowSyncXhrRules,
-                    removeRuleIds: oldRuleIds,
-                  }
-                );
-              } catch (e) {
-                console.error(e);
+                    removeRuleIds,
+                  };
+                  await createRedirector(
+                    `|${ENDPOINT_PREFIX}*`,
+                    redirectUrl,
+                    options
+                  );
+                } catch (e) {
+                  console.error(e, "Error initializing SyncMessage DNR responders.");
+                }
               }
+
             })();
 
             return {
@@ -447,9 +454,9 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       // We first need to send an async message with both the payload
       // and "trusted" sender metadata, along with an unique msgId to
       // reconcile with in the retrieval phase via synchronous XHR
-      browser.runtime.sendMessage({
-        __syncMessage__: { id: msgId, payload: msg },
-      });
+      const preflight = browser.runtime.sendMessage({
+          __syncMessage__: { id: msgId, payload: msg },
+        });
 
       // Now go retrieve the result!
       const MAX_LOOPS = 1000;
@@ -496,7 +503,21 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
         __syncMessage__: { id: msgId, release: true },
       });
       console.debug(`SyncMessage ${msgId}, state ${ document.readyState }, result: ${JSON.stringify(result)}`); // DEV_ONLY
-      if (result.error) throw result.error;
+      if (result.error) {
+        if (document.readyState == "loading" && /Failed to load/.test(result.error.message)) {
+          window.stop();
+          (async () => {
+            try {
+              await preflight;
+              browser.runtime.sendSyncMessage(msg);
+              location.reload();
+            } catch (e) {
+              console.error(e, "SyncMessage retry on startup failed!")
+            }
+          })();
+        }
+        throw result.error;
+      }
       return result.payload;
     };
   }

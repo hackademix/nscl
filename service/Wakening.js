@@ -18,6 +18,7 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 if (!self.Wakening) {
+  "use strict";
 
   // Thanks wOxxOm, https://groups.google.com/a/chromium.org/g/chromium-extensions/c/bnH_zx2LjQY/m/kOAzozYxCQAJ
 
@@ -28,31 +29,46 @@ if (!self.Wakening) {
     Object.freeze(self.Wakening);
   });
 
-  const {browser} = self;
-
-  const apiHandler = {
-    has: (src, key) => {
-      const val = src[key];
-      if (key === 'addListener' && typeof val === 'function') {
-        return (fn, ...filters) => {
-          src[key](async (...res) => (
-          console.debug("Wakening on hold", src, new Error().stack), // DEV_ONLY
-          await wakening,
-          fn(...res)),
-            ...filters);
-        };
-      }
-      return val && typeof val === 'object' && /^[a-z]/.test(key)
-        ? new Proxy(val, apiHandler)
-        : val;
-    },
+  const apiRoot = browser;
+  const handler = {
+    apply(target, thisArg, [fn, ...filters]) {
+      const waitingFn = async (...args) => {
+        await wakening;
+        console.debug("After wakening, calling", fn, args); // DEV_ONLY
+        return fn(...args);
+      };
+      console.debug("Adding wakening-waiting listener", target, thisArg, fn, ...filters); // DEV_ONLY
+      return Reflect.apply(target, thisArg, [waitingFn, ...filters]);
+    }
   };
 
-  self.browser = new Proxy(browser, apiHandler);
+  const restoreMap = new Map();
+  for (const apiName in apiRoot) {
+    const api = apiRoot[apiName];
+    if (typeof api !== "object") continue;
+    const events = [];
+    for (const key in api) {
+      if (/^on[A-Z]/.test(key) &&
+        key !== "onMessage" // patching onMessage causes trouble w/ promises!
+      ) {
+        events.push(key);
+      }
+    }
+    for (const eventName of events) {
+      console.debug("Wakening patching", apiName, eventName); // DEV_ONLY
+      const event = api[eventName];
+      const {addListener} = event;
+      restoreMap.set(event, addListener);
+      event.addListener = new Proxy(addListener, handler);
+    }
+  }
 
   (async () => {
     await wakening;
     console.debug("Wakening done"); // DEV_ONLY
-    self.browser = browser;
+    for (const [event, addListener] of [...restoreMap]) {
+      event.addListener = addListener;
+    }
+    restoreMap.clear();
   })();
 }

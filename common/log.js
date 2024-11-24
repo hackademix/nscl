@@ -18,6 +18,7 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+"use strict";
 {
   const PREFIX = typeof browser === "object" && typeof importScripts === "undefined"
     ? `[${browser.runtime.getManifest().name}]` : '';
@@ -26,19 +27,21 @@
   let lastDebugTime = startupTime;
   let ordinal = 1;
 
-  function log(msg, ...rest) {
-    console.log(`${PREFIX} ${msg}`, ...rest);
-  }
+  const getStack = () => new Error().stack.replace(/^Error(?:.*\n){3}/, "");
 
-  function debug(msg, ...rest) {
-    const ts = Date.now();
-    const sinceStartup = ts - startupTime;
-    const elapsed = ts - lastDebugTime;
-    lastDebugTime = ts;
-    console.debug(`${PREFIX}(#${ordinal++},${elapsed},${sinceStartup}): ${msg}`, ...rest);
-  }
-
-  function error(e, msg, ...rest) {
-    console.error(`${PREFIX} ${msg}`, ...rest, e, e.message, e.stack);
-  }
+  Object.assign(globalThis, {
+    log(msg, ...rest) {
+      console.log(`${PREFIX} ${msg}`, ...rest);
+    },
+    debug(msg, ...rest) {
+      const ts = Date.now();
+      const sinceStartup = ts - startupTime;
+      const elapsed = ts - lastDebugTime;
+      lastDebugTime = ts;
+      console.debug(`${PREFIX}(#${ordinal++},${elapsed},${sinceStartup}): ${msg}`, ...rest, getStack());
+    },
+    error(e, msg, ...rest) {
+      console.error(e, `${PREFIX} ${msg}`, ...rest, getStack());
+    },
+  });
 }

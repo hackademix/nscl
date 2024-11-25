@@ -167,23 +167,35 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
             };
 
             (async () => {
-
               const allowSyncXhrRules = [
-                "document-policy",
-                "feature-policy",
-              ].map((header) => ({
-                id: ++lastRuleId,
-                priority: DNR_BASE_PRIORITY,
-                action: {
-                  type: "modifyHeaders",
-                  responseHeaders: [{ header, operation: "remove" }],
+                {
+                  id: ++lastRuleId,
+                  priority: DNR_BASE_PRIORITY,
+                  action: {
+                    type: "modifyHeaders",
+                    // Note: notwithstanding poor documentation, looks like in modern browsers
+                    // permissions-policy overrides (document|feature)-policy, & DNR appending
+                    // to the header overrides the restrictive token despite inheritance rules,
+                    // making the following hack work, quite surprisingly and nicely (i.e.
+                    // other policies, if present, remain effective).
+                    responseHeaders: [
+                      {
+                        header: "permissions-policy",
+                        operation: "append",
+                        value: "sync-xhr=*",
+                      },
+                    ],
+                  },
+                  condition: {
+                    responseHeaders: [
+                      "document-policy",
+                      "feature-policy",
+                      "permissions-policy",
+                    ].map(header => ({ header, values: ["*sync-xhr*"] })),
+                    resourceTypes: ["main_frame", "sub_frame"],
+                  },
                 },
-                condition: {
-                  responseHeaders: [{ header, values: ["*sync-xhr*"] }],
-                  resourceTypes: ["main_frame", "sub_frame"],
-                },
-              }));
-
+              ];
 
               for (const ruleSet of ["Dynamic", "Session"]) {
                 try {
@@ -504,6 +516,9 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       });
       console.debug(`SyncMessage ${msgId}, state ${ document.readyState }, result: ${JSON.stringify(result)}`); // DEV_ONLY
       if (result.error) {
+        if (document.featurePolicy && !document.featurePolicy?.allowsFeature("sync-xhr")) {
+          throw new Error(`SyncMessage fails on ${document.URL} because sync-xhr is not allowed!`);
+        }
         if (document.readyState == "loading" && /Failed to load/.test(result.error.message)) {
           window.stop();
           (async () => {
@@ -512,7 +527,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
               browser.runtime.sendSyncMessage(msg);
               location.reload();
             } catch (e) {
-              console.error(e, "SyncMessage retry on startup failed!")
+              console.error(e, `SyncMessage retry on startup failed on ${document.URL}!`);
             }
           })();
         }

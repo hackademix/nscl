@@ -41,11 +41,25 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
   if (browser.webRequest) {
     // Background script / event page / service worker
     let anyMessageYet = false;
+
+    const retries = new Set();
+
     // we don't care this is async, as long as it get called before the
     // sync XHR (we are not interested in the response on the content side)
     browser.runtime.onMessage.addListener((m, sender) => {
       let wrapper = m.__syncMessage__;
       if (!wrapper) return;
+      if(wrapper.retry) {
+        const retryKey = `${sender.tab.id}:${sender.frameId}:${sender.url}`;
+        let retried = retries.has(retryKey);
+        if (retried) {
+          retries.delete(retryKey);
+        } else {
+          retries.add(retryKey);
+        }
+        console.debug(`SyncMessage retry ${retried ? "(giving up)" : "now" }.`, retryKey); // DEV_ONLY
+        return Promise.resolve(!retried);
+      }
       if (wrapper.release) {
         suspender.release(wrapper.id);
       } else if ("payload" in wrapper) {
@@ -463,12 +477,12 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       let msgId = `${uuid()}:${docId}`;
       let url = msgUrl(msgId);
 
+      const preSend = __syncMessage__ => browser.runtime.sendMessage({__syncMessage__});
+
       // We first need to send an async message with both the payload
       // and "trusted" sender metadata, along with an unique msgId to
       // reconcile with in the retrieval phase via synchronous XHR
-      const preflight = browser.runtime.sendMessage({
-          __syncMessage__: { id: msgId, payload: msg },
-        });
+      const preflight = preSend({ id: msgId, payload: msg });
 
       // Now go retrieve the result!
       const MAX_LOOPS = 1000;
@@ -511,9 +525,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
         }
         break;
       }
-      browser.runtime.sendMessage({
-        __syncMessage__: { id: msgId, release: true },
-      });
+      preSend({ id: msgId, release: true });
       console.debug(`SyncMessage ${msgId}, state ${ document.readyState }, result: ${JSON.stringify(result)}`); // DEV_ONLY
       if (result.error) {
         if (document.featurePolicy && !document.featurePolicy?.allowsFeature("sync-xhr")) {
@@ -525,10 +537,13 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
             try {
               await preflight;
               browser.runtime.sendSyncMessage(msg);
-              location.reload();
             } catch (e) {
-              console.error(e, `SyncMessage retry on startup failed on ${document.URL}!`);
+              console.error(e, `SyncMessage immediate retry failed on ${document.URL}!`);
+              if (!(await preSend({retry: true}))) {
+                return;
+              }
             }
+            history.go(0);
           })();
         }
         throw result.error;

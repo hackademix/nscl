@@ -34,18 +34,27 @@ globalThis.include ||= (() =>
       }
     };
 
-    // bootstrap from manifest.json
+    globalThis.include = include;
+    // try to bootstrap dependencies from either from manifest.json or REQUIRED.js
     const {background} = (chrome || browser).runtime.getManifest();
-    if (background.scripts) {
-      const {scripts} = background;
+    const requiredScripts = background?.scripts || (() => {
+      try {
+        // we expect the following script to contain
+        // include.REQUIRED = [..., script];
+        importScripts("/REQUIRED.js");
+        return include.REQUIRED;
+      } catch (e) {
+        console.error(e);
+      }
+    })();
+    if (requiredScripts) {
       // prevent self importing
-      imported.add(scripts.find(s => s.endsWith("common/include.js")));
-      globalThis.include = include;
-      include(scripts);
+      imported.add(requiredScripts.find(s => s.endsWith("common/include.js")));
+      include(requiredScripts);
       // MV3 service worker needs lazy scripts to be pre-imported in the install event,
       // https://issues.chromium.org/issues/40760920#comment11
       addEventListener("install", ev => {
-        include(scripts);
+        include(requiredScripts);
         const rx = /(?:\bawait)?\s+include\s*\(\s*(["[][^)]+)/g;
         ev.waitUntil((async function recursive(scripts) {
           for (const src of scripts) {
@@ -66,7 +75,7 @@ globalThis.include ||= (() =>
               console.error(e, "Trying to include recursively", src), scripts;
             }
           }
-        })(scripts));
+        })(requiredScripts));
       });
     }
 

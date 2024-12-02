@@ -201,11 +201,6 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                     ],
                   },
                   condition: {
-                    responseHeaders: [
-                      "document-policy",
-                      "feature-policy",
-                      "permissions-policy",
-                    ].map(header => ({ header, values: ["*sync-xhr*"] })),
                     resourceTypes: ["main_frame", "sub_frame"],
                   },
                 },

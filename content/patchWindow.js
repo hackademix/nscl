@@ -470,7 +470,7 @@ Object.defineProperty(patchWindow, "disabled", {
   get() {
     if (!UA.isMozilla) return true;
     if (typeof ns === "object" && ns) {
-      if (ns.allows) {
+      if (ns.allows && ns.policy) {
         const value = !ns.allows("script");
         Object.defineProperty(patchWindow, "disabled", { value, configurable: true });
         return value;

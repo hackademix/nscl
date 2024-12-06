@@ -31,9 +31,9 @@ var TabTies = (() => {
         if (data) return map = new Map(data.map(([tabId, ties]) => [tabId, new Set(ties)]));
       },
       beforeSave() {
-        return [...map.entries()
+        return [...map.entries()]
           .filter(([, ties]) => ties?.[Symbol.iterator])
-          .map(([tabId, ties]) => [tabId, [...ties]])];
+          .map(([tabId, ties]) => [tabId, [...ties]]);
       },
     }
   );

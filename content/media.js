@@ -87,6 +87,7 @@ if ("MediaSource" in window) {
       }
     });
     let mozMsePatch = () => patchWindow((win, {xray})=> {
+      debug("Patching MSE for Gecko"); // DEV_ONLY
       let unpatched = new Map();
       function patch(obj, methodName, replacement) {
         let methods = unpatched.get(obj) || {};
@@ -136,6 +137,7 @@ if ("MediaSource" in window) {
 
     mozPatch = () => {
       mozPatch = () => {}; // just once;
+      debug(`Gecko mediaBlocker patches ${patchWindow.disabled ? "(except MSE interception)" : ""}`); // DEV_ONLY
       mozMsePatch();
       if (location.protocol !== "file:") return;
       // Gecko doesn't block file:// media even with CSP media-src 'none',

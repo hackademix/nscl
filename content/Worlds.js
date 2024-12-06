@@ -19,13 +19,24 @@
  */
 
 "use strict";
-
 {
-  const isMainWorld = !(self?.browser?.runtime);
+  const isMainWorld = !(globalThis.browser?.runtime);
   let ended = false;
 
-  const { dispatchEvent, addEventListener, removeEventListener,
-          Object, Error, Reflect } = self;
+
+  const { dispatchEvent, addEventListener, removeEventListener, CustomEvent } = self;
+  const { Object, Error, Reflect } = globalThis;
+
+  const xrayEnabled = !isMainWorld && globalThis.XPCNativeWrapper;
+  const xrayMake = (enabled, wrap, unwrap = wrap, forPage = wrap) => ({
+    enabled, wrap, unwrap, forPage,
+  });
+  const xray = !xrayEnabled
+  ? xrayMake(false, o => o)
+  : xrayMake(true, o => XPCNativeWrapper(o), o => XPCNativeWrapper.unwrap(o),
+    function(obj, win = window) {
+      return cloneInto(obj, win, {cloneFunctions: true, wrapReflectors: true});
+    });
 
   const getStack = (() => {
     if ("stackTraceLimit" in Error) {
@@ -69,7 +80,8 @@
       || function() { return this.stack };
     return () => {
       const stack = Reflect.apply(stackGetter, new Error(), []).split("\n");
-      stack.splice(0, 2); // Remove top "Error" and this very  call site
+      // Remove top "Error" (Chromium-only) and this very  call site
+      stack.splice(0, stack[0].startsWith("Error") ? 2 : 1);
       return stack;
     }
   })();
@@ -89,6 +101,7 @@
   class Port {
     constructor(portId, scriptId = "") {
       this.id = portId ??= `${WORLDS_ID}:${scriptId}:${uuid()}`;
+      ports.set(scriptId, this);
       console.debug(`Creating ${here}->${there} ${portId}`); // DEV_ONLY
 
       // we need a double dispatching dance and maintaining a stack of
@@ -97,6 +110,7 @@
       const retStack = [];
 
       let fire = (e, detail, target = self) => {
+        detail = xray.forPage(detail);
         dispatchEvent.call(target, new CustomEvent(`${portId}:${e}`, { detail, composed: true }));
       };
 
@@ -191,7 +205,6 @@
     if (!port) {
       portId ??= worldsPort.postMessage({id: "connect", scriptId})
       port = new Port(portId, scriptId);
-      ports.set(scriptId, port);
     }
 
     if (
@@ -221,19 +234,24 @@
   };
 
   const endWorldsIfDone = () => {
-    if (!ports.values().some(p => !p)) {
+    if (![...ports.values()].some(p => !p)) {
       endWorlds();
     }
   };
 
   const Worlds = {
-    connect(handlers) {
-      const scriptMatch = getStack()[1]?.match(/\/(\w+)(?:\.main)?\.js\b/);
-      const scriptId = scriptMatch && scriptMatch[1];
+    connect(scriptId, handlers) {
+      if (!handlers && typeof(scriptId) == "object") {
+        // on Chromium we can try to infer the scriptId from the stack.
+        handlers = scriptId;
+        const stack = getStack();
+        const scriptMatch = stack[1]?.match(/\/(\w+)(?:\.main)?\.js\b/);
+        scriptId = scriptMatch && scriptMatch[1];
+      }
       if (scriptId) {
         return connectWorlds(scriptId, handlers);
       }
-      throw new Error(`Can't identify scripts to connect on the stack ${stack.join("\n")}`);
+      throw new Error(`Can't identify scripts to connect on the stack ${stack.join("\n")}. Is this Gecko?`);
     },
     main: {
       console,
@@ -241,7 +259,7 @@
     },
   };
 
-  let worldsPort = new Port(WORLDS_ID);
+  let worldsPort = new Port(WORLDS_ID, "Worlds");
   let bootstrapped = false;
   worldsPort.onMessage = (msg => {
     console.debug(`${here} got message`, msg);
@@ -259,7 +277,7 @@
         if (bootstrapped) return;
         bootstrapped = true;
         // Switch to random portId after initial handshake, before page scripts can run
-        const swapPort = new Port(null, WORLDS_ID);
+        const swapPort = new Port(null, "Worlds");
         swapPort.mergeHandlers(worldsPort);
         queueMicrotask(() => {
           worldsPort.dispose();
@@ -282,7 +300,7 @@
     }
     if (bootstrap?.swapPortId) {
       // Switch to random portId after initial handshake, before page scripts can run
-      const swapPort = new Port(bootstrap.swapPortId, WORLDS_ID);
+      const swapPort = new Port(bootstrap.swapPortId, "Worlds");
       swapPort.mergeHandlers(worldsPort);
       worldsPort.dispose();
       worldsPort = swapPort;
@@ -293,8 +311,8 @@
 
   if (isMainWorld) {
     const url = document.URL;
-     // proxy the API to validate access (allow only from the same extension)
-     let validatingStack = false;
+    // proxy the API to validate access (allow only from the same extension)
+    let validatingStack = false;
     const validateStack = () => {
       if (worldsPort.disposed || validatingStack) return;
       validatingStack = true;
@@ -308,15 +326,17 @@
         let [myself, callee, caller = "UNKNOWN CALL SITE"] = stack;
 
         console.debug(`Validating stack in ${url}`, stack); // DEV_ONLY
-        const parseOrigin = l => l.replace(/^\s*at (?:.*[(@])?([\w-]+:\/\/[^/]+\/).*/, "$1");
+        const parseOrigin = l => l.replace(/^\s*(?:at )?(?:.*[(@])?([\w-]+:\/\/[^/]+\/|<[^>]+>).*/, "$1");
 
-        const myOrigin = myself.includes("/Worlds.js") && parseOrigin(myself);
+        const myOrigin = parseOrigin(myself);
         if (!myOrigin)  {
           throw new Error(`Cannot find Worlds' origin from ${myself}`);
         }
         if (parseOrigin(callee) !== myOrigin) {
           throw(`Callee ${callee} doesn't match origin ${myOrigin}!`);
         }
+        // note: even if on Gecko myOrigin may be "<anonymous code>" instead of extension URL,
+        // a content caller can't fake it via "// #sourceURL=" because space chars breaks it
         if (parseOrigin(caller) !== myOrigin) {
           throw new Error(`Unsafe call to ${myOrigin} from ${caller} (${url}, <STACK>\n${stack.join("\n")}\n</STACK>)`);
         }
@@ -365,5 +385,10 @@
       }));
   }
   // just in case, end the Worlds before any page script can run
-  setTimeout(endWorlds, 0);
+  setTimeout(function justInCase() {
+    endWorldsIfDone();
+    if(document.readyState == "loading") {
+      setTimeout(justInCase, 0);
+    }
+  }, 0);
 }

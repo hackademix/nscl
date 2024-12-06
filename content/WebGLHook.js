@@ -64,7 +64,7 @@ ns.on("capabilities", event => {
     notifyWebGL(target);
   }
 
-  Worlds.connect({
+  Worlds.connect("WebGLHook", {
     onConnect(port) {
       debug(`WebGLHook connected, sending patchGetContext`); // DEV_ONLY
       port.postMessage("patchGetContext");

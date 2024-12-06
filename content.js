@@ -22,7 +22,7 @@
 
 console.log("NoScript Commons Library content script", Date.now(), document.readyState, document.documentElement.outerHTML);
 
-Worlds.connect({
+Worlds.connect("content", {
   onConnect: port => {
     console.log("Isolated content.js sent 'ping', content.main.js returns",
       port.postMessage("ping"));
@@ -32,4 +32,3 @@ Worlds.connect({
     if (m === "ping") return "pong";
   },
 });
-

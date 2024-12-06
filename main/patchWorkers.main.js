@@ -168,7 +168,7 @@
     console.debug("patchWorkers.js ready to patch on", location.href); // DEV_ONLY
   };
 
-  Worlds.connect({
+  Worlds.connect("patchWorkers", {
     onConnect(port) {
       patchWorkers(port);
     },

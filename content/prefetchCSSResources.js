@@ -34,7 +34,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
 
   let corsSheetURLs = new Set();
   let corsSheetsByHref = new Map();
-  Worlds.connect({
+  Worlds.connect("prefetchCSSResources", {
     onMessage (msg, {port, event}) {
       const {node} = event;
       switch(msg) {

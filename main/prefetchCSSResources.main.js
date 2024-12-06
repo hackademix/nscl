@@ -23,9 +23,9 @@
 
 "use strict";
 
-Worlds.connect({
+Worlds.connect("prefetchCSSResources", {
   onConnect(port) {
-    console.debug("prefetchCssResources init"); // DEV_ONLY
+    console.debug("prefetchCSSResources init"); // DEV_ONLY
     const {exportFunction} = Worlds.main;
     const { window, StyleSheet } = self.window;
     const ssProto = StyleSheet.prototype;

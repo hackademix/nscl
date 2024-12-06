@@ -27,7 +27,7 @@
   let lastDebugTime = startupTime;
   let ordinal = 1;
 
-  const getStack = () => new Error().stack.replace(/^Error(?:.*\n){3}/, "");
+  const getStack = () => new Error().stack.replace(/^(?:Error.*\n)?(?:.*\n){2}/, "");
 
   Object.assign(globalThis, {
     log(msg, ...rest) {

@@ -48,15 +48,14 @@ if (!self.Wakening) {
     if (typeof api !== "object") continue;
     const events = [];
     for (const key in api) {
-      if (/^on[A-Z]/.test(key) &&
-        key !== "onMessage" // patching onMessage causes trouble w/ promises!
+      if (!/^on[A-Z]/.test(key) ||
+        key == "onMessage" // patching onMessage causes trouble w/ promises!
       ) {
-        events.push(key);
+        continue;
       }
-    }
-    for (const eventName of events) {
-      console.debug("Wakening patching", apiName, eventName); // DEV_ONLY
-      const event = api[eventName];
+      console.debug("Wakening patching", apiName, key); // DEV_ONLY
+      const event = api[key];
+      if (!event) continue;
       const {addListener} = event;
       restoreMap.set(event, addListener);
       event.addListener = new Proxy(addListener, handler);

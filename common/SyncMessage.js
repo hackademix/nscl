@@ -19,18 +19,30 @@
  */
 
 // depends on /nscl/common/uuid.js
+// depends on /nscl/common/SyncMessage/request.json
+// depends on /nscl/common/SyncMessage/response.json
 
 "use strict";
 if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
   const MOZILLA =
     self.XMLHttpRequest && "mozSystem" in self.XMLHttpRequest.prototype;
 
-  const ENDPOINT_ORIGIN = "https://[ff00::]";
-  const ENDPOINT_PREFIX = `${ENDPOINT_ORIGIN}/nscl/${browser.runtime.getURL(
-    "syncMessage"
-  )}?`;
+  const INTERNAL_PATH = "/nscl/common/SyncMessage/";
 
-  const msgUrl = (msgId) => `${ENDPOINT_PREFIX}id=${encodeURIComponent(msgId)}`;
+  const MANIFEST = browser.runtime.getManifest();
+  const USE_INTERNAL_URIS = MANIFEST.web_accessible_resources
+    ?.some(({ resources }) =>
+      resources.includes(`${INTERNAL_PATH}*`)
+    );
+  const IPV6_DUMMY_ENDPOINT = "https://[ff00::]";
+  const BASE_PREFIX = browser.runtime.getURL(INTERNAL_PATH);
+  // We cannot use BASE_PREFIX w/ internal URIs for requests (yet?) because
+  // neither DNR nor webRequest nor ServiceWorker intercept our own extension URLs :(
+  const REQUEST_PREFIX = `${IPV6_DUMMY_ENDPOINT}${INTERNAL_PATH}request.json?`;
+  // But we can redirect to extension URLs on MV3
+  const RESPONSE_PREFIX = USE_INTERNAL_URIS ? BASE_PREFIX + "response.json?" : "data:application/json,";
+
+  const msgUrl = (msgId) => `${REQUEST_PREFIX}id=${encodeURIComponent(msgId)}`;
 
   // https://github.com/w3c/webappsec-permissions-policy/blob/main/permissions-policy-explainer.md#appendix-big-changes-since-this-was-called-feature-policy
   const allowSyncXhr = (policy) =>
@@ -40,6 +52,9 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
 
   if (browser.webRequest) {
     // Background script / event page / service worker
+
+    const USE_SERVICE_WORKER = "onfetch" in self && REQUEST_PREFIX.startsWith(BASE_PREFIX);
+
     let anyMessageYet = false;
 
     const retries = new Set();
@@ -75,8 +90,11 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
     const asyncResults = new Map();
 
     const ret = (r) => ({
-      redirectUrl: `data:application/json,${
-        encodeURIComponent(JSON.stringify(r))}`,
+      redirectUrl: `${
+        RESPONSE_PREFIX
+        }${
+        encodeURIComponent(JSON.stringify(r))
+        }`,
     });
     const res = (payload) => ({ payload });
     const err = (e) => ({ error: { message: e.message, stack: e.stack } });
@@ -121,10 +139,40 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       }
     }
 
-    const suspender = (
-      browser.declarativeNetRequest && !MOZILLA
-        ? () => {
-            // MV3
+    const url2MsgId = url => new URLSearchParams(url.split("?")[1])?.get("id");
+    class Suspender {
+      #pending = new Map();
+      constructor(init) {
+        init.apply(this);
+      }
+      async hold(wrapper) {
+        this.#pending.set(wrapper.id, wrapper);
+      }
+      release(id) {
+        this.#pending.delete(id);
+      }
+      get(id) {
+        return this.#pending.get(id);
+      }
+    }
+
+    const suspender =
+      USE_SERVICE_WORKER
+      ? new Suspender(function() {
+        // MV3 with service worker
+        console.debug("Registering sw fetch listener"); // DEV_ONLY
+        addEventListener("fetch", event => {
+          console.debug("Extension sw fetch event", event); // DEV_ONLY
+          const msgId = url2MsgId(event.request.url);
+          if (!msgId) return;
+          const wrapper = this.get(msgId);
+          this.release(msgId);
+          event.respondWith((async () => new Response(await wrapper.result))());
+        });
+      })
+      : browser.declarativeNetRequest && !MOZILLA
+        ? (() => {
+              // MV3
             const DNR_BASE_ID = 65535;
             const DNR_BASE_PRIORITY = 1000;
             let lastRuleId = DNR_BASE_ID;
@@ -220,7 +268,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                     removeRuleIds,
                   };
                   await createRedirector(
-                    `|${ENDPOINT_PREFIX}*`,
+                    `|${REQUEST_PREFIX}*`,
                     redirectUrl,
                     options
                   );
@@ -251,17 +299,15 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                 removeRedirector(redirId);
               },
             };
-          }
-        : () => {
+          })()
+        : new Suspender(function() {
             // MV2
-            const pending = new Map();
             const CANCEL = { cancel: true };
             const onBeforeRequest = (request) => {
               try {
                 const { url } = request;
-                const shortUrl = url.replace(ENDPOINT_PREFIX, "");
-                const params = new URLSearchParams(url.split("?")[1]);
-                const msgId = params.get("id");
+                const shortUrl = url.replace(REQUEST_PREFIX, "");
+                const msgId = url2MsgId(url);
 
                 const chromeRet = (resultReady) => {
                   const r = resultReady
@@ -275,7 +321,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                   return chromeRet(true);
                 }
 
-                const wrapper = pending.get(msgId);
+                const wrapper = this.get(msgId);
 
                 console.debug(`PENDING ${shortUrl}: ${JSON.stringify(wrapper)}`, request); // DEV_ONLY
                 if (!wrapper) {
@@ -292,7 +338,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                     } catch (e) {
                       return ret(err(e));
                     } finally {
-                      pending.delete(msgId);
+                      this.release(msgId);
                     }
                   })();
                 }
@@ -361,29 +407,58 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
               })();
             }
 
-            const onHeadersReceived = (request) => {
-              let replaced = false;
-              let { responseHeaders } = request;
-              let rxPolicy = /^(?:feature|permissions|document)-policy$/i;
-              for (let h of request.responseHeaders) {
-                if (rxPolicy.test(h.name)) {
-                  const value = allowSyncXhr(h.value);
+            const patchHeadersForXhr = MANIFEST.manifest_version < 3
+            ? NOP // XHR don't need to bypass CSP in manifest V2
+            : (request) => {
+                let replaced = false;
+                let replacedCSP = false;
+                const { responseHeaders } = request;
+                const CSP = "content-security-policy";
+                const rxPolicy = /^(?:feature|permissions|document)-policy$/;
+                for (let h of responseHeaders) {
+                  const name = h.name.toLowerCase();
+                  let value;
+                  if (rxPolicy.test(name)) {
+                    value = allowSyncXhr(h.value);
+                  } else if (name == CSP) {
+                    value = h.value.replace(/connect-src [^;]+/g, m => {
+                      const tokens = new Set(m.split(/\s+/));
+                      tokens.delete("'none'");
+                      const msgSrc = new URL(REQUEST_PREFIX).origin;
+                      tokens.has(msgSrc) || tokens.add(msgSrc);
+                      return [...tokens].join(" ");
+                    });
+                    replacedCSP = true;
+                  } else {
+                    continue;
+                  }
                   if (value !== h.value) {
-                    replaced = true;
                     h.value = value;
+                    replaced = true;
                   }
                 }
-              }
+                if (replaced) {
+                  console.log("Patched responseHeaders", request.url, responseHeaders); // DEV_ONLY
+                  if (replacedCSP) {
+                    // We need to clear the header first, in order to avoid merging, see
+                    // - https://searchfox.org/mozilla-central/source/toolkit/components/extensions/webrequest/WebRequest.sys.mjs#257
+                    // - https://bugzilla.mozilla.org/show_bug.cgi?id=1462989
+                    // This does NOT work (yet?) on MV3, see https://github.com/w3c/webextensions/issues/730
+                    responseHeaders.unshift({name: CSP, value: ""});
+                  }
+                  return { responseHeaders };
+                }
+              };
 
+            const onHeadersReceived = (request) => {
               bug1899786(request);
-
-              return replaced ? { responseHeaders } : null;
+              return patchHeadersForXhr(request);
             };
 
             browser.webRequest.onBeforeRequest.addListener(
               onBeforeRequest,
               {
-                urls: [`${ENDPOINT_PREFIX}*`],
+                urls: [`${REQUEST_PREFIX}*`],
                 types: ["xmlhttprequest"],
               },
               ["blocking"]
@@ -397,19 +472,16 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
               ["blocking", "responseHeaders"]
             );
 
-            return {
-              hold(wrapper) {
-                pending.set(wrapper.id, wrapper);
-              },
-              release(id) {
-                pending.delete(id);
-              },
-            };
+
           }
-    )();
+        );
+
+    console.debug("Using suspender", suspender, USE_SERVICE_WORKER); // DEV_ONLY
 
     browser.runtime.onSyncMessage = Object.freeze({
-      ENDPOINT_PREFIX,
+      BASE_PREFIX,
+      REQUEST_PREFIX,
+      RESPONSE_PREFIX,
       addListener(l) {
         listeners.add(l);
       },
@@ -419,10 +491,11 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       hasListener(l) {
         return listeners.has(l);
       },
-      isMessageRequest(request) {
+      isMessageRequest({type, url}) {
         return (
-          request.type === "xmlhttprequest" &&
-          request.url.startsWith(ENDPOINT_PREFIX)
+          type === "xmlhttprequest" &&
+          url.includes(INTERNAL_PATH) &&
+          (url.includes(REQUEST_PREFIX) || url.includes(RESPONSE_PREFIX))
         );
       },
     });
@@ -489,7 +562,10 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
         try {
           r.open("GET", url, false);
           r.send(null);
-          result = JSON.parse(r.responseText);
+          const rawResult = r.responseURL.startsWith(RESPONSE_PREFIX)
+            ? decodeURIComponent(r.responseURL.replace(RESPONSE_PREFIX, ""))
+            : r.responseText;
+          result = JSON.parse(rawResult);
           if ("chunk" in result) {
             let { chunk, more } = result;
             chunks.push(chunk);
@@ -508,11 +584,11 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
             console.debug(`SyncMessage ${msgId} waiting for main process asynchronous processing, loop ${loop}/${MAX_LOOPS}.`); // DEV_ONLY
             continue;
           } else if (result.error) {
-            result.error = new Error(result.error.message, result.error);
+            result.error = new Error(result.error.message + ` (${url})`, result.error);
           }
         } catch (e) {
           console.error(e,
-            `SyncMessage ${msgId} error in ${document.URL}: ${e.message} (response ${r.responseURL} ${r.responseText})`
+            `SyncMessage ${msgId} error in ${document.URL}: ${e.message} (response ${url} - ${r.responseURL} - ${r.responseText})`
           );
           result = {
             error: new Error(`SyncMessage Error ${e.message}`, { cause: e }),

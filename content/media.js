@@ -63,10 +63,10 @@ if ("MediaSource" in window) {
         return;
       }
       if (mediaBlocker === undefined && /^data\b/.test(blockedURI)) { // Firefox 81 reports just "data"
-        debug("mediaBlocker set via CSP listener.")
+        debug("mediaBlocker set via CSP listener.", originalPolicy, CSP.blocks(originalPolicy, "script")); // DEV_ONLY
         mediaBlocker = true;
         e.stopImmediatePropagation();
-        mozPatch();
+        mozPatch(CSP.blocks(originalPolicy, "script"));
         return;
       }
       if (blockedURI.startsWith("blob") &&
@@ -83,7 +83,7 @@ if ("MediaSource" in window) {
       mediaBlocker = !ns.allows("media");
       if (mediaBlocker) {
         debug("mediaBlocker set via fetched policy.");
-        mozPatch();
+        mozPatch(!ns.canScript);
       }
     });
     let mozMsePatch = () => patchWindow((win, {xray})=> {
@@ -135,10 +135,10 @@ if ("MediaSource" in window) {
       });
     });
 
-    mozPatch = () => {
+    mozPatch = (scriptDisabled = false) => {
       mozPatch = () => {}; // just once;
-      debug(`Gecko mediaBlocker patches ${patchWindow.disabled ? "(except MSE interception)" : ""}`); // DEV_ONLY
-      mozMsePatch();
+      debug(`Gecko mediaBlocker patches ${patchWindow.disabled || scriptDisabled ? "(except MSE interception)" : ""}`); // DEV_ONLY
+      if (!scriptDisabled) mozMsePatch();
       if (location.protocol !== "file:") return;
       // Gecko doesn't block file:// media even with CSP media-src 'none',
       // neither intercepts them in webRequest.onBeforeLoad listeners :(

@@ -33,7 +33,7 @@ filter_inclusions() {
   pushd >/dev/null 2>&1 "$1"
   shift
   shopt -s globstar nullglob
-  for f in $(grep -Eho '\bnscl/[0-9a-zA-Z_/.-]+\.js' **/*.{js,html} "$@" | sort | uniq); do
+  for f in $(grep -Eho '\bnscl/[0-9a-zA-Z_/.-]+\.js(on)?' **/*.{js,html} "$@" | sort | uniq); do
     if ! [[ -f "$TARGET/$f" ]]; then
       nscl_srcdir="$(dirname "$f")"
       # create symlink to actual file if this is a MAIN world alias

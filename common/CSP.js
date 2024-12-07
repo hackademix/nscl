@@ -33,10 +33,10 @@ class CSP {
   }
 
   buildBlocker(...types) {
-      return this.build(...(types.map(t => `${t.name || `${t.type || t}-src`} ${t.value || "'none'"}`)));
+    return this.build(...(types.map(t => `${t.name || `${t.type || t}-src`} ${t.value || "'none'"}`)));
   }
 
-  blocks(header, type) {
+  static blocks(header, type) {
     return `;${header};`.includes(`;${type}-src 'none';`)
   }
 

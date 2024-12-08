@@ -41,9 +41,8 @@ ns.on("capabilities", event => {
       // but proxy the wrapped getContext method from unprivileged scope, see
       // https://forums.informaction.com/viewtopic.php?p=104382
 
-      const CanvasClass = globalThis[canvas];
-      // globalThis future-proofs us for when we dare patchWorkers()
-
+      const unwrappedScope = xray.unwrap(scope);
+      const CanvasClass = unwrappedScope[canvas];
       const getContext = xray.getSafeMethod(scope[canvas].prototype, "getContext");
 
       const MAX_CONSECUTIVE = 20;
@@ -57,7 +56,7 @@ ns.on("capabilities", event => {
             if (panic) {
               return null;
             }
-            const target = canvas === "HTMLCanvasElement" && document.contains(thisArg) ? thisArg : scope;
+            const target = canvas == "HTMLCanvasElement" && unwrappedScope.document.contains(thisArg) ? thisArg : scope;
             const t = Date.now();
             if (t - lastTime < 5 && consecutive++ > MAX_CONSECUTIVE) {
               console.error("Too many consecutive blocked webgl contexts, trying to break the loop.");

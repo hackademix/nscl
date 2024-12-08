@@ -24,7 +24,6 @@
     (typeof window === "object"
         ? typeof window.wrappedJSObject === "object"
         : "contentScripts" in browser);
-  let mobile = false;
   if (isMozilla) {
     if (mozWebExtUrl) {
       // help browser-specific UI styling
@@ -49,7 +48,12 @@
 
   var UA = {
     isMozilla,
-    mobile,
+    get mobile() {
+      delete this.mobile;
+      return this.mobile = mozWebExtUrl
+      ? !("windows" in browser)
+      : navigator.userAgent.includes("Mobile");
+    },
     DEV: true, // DEV_ONLY
   };
 

@@ -20,11 +20,13 @@
 
 // depends on nscl/content/patchWindow.js
 // depends on nscl/common/Messages.js
+// depends on nscl/common/UA.js
+
 "use strict";
 
-ns.on("capabilities", () => {
+!UA.mobile || ns.on("capabilities", () => {
   if (!patchWindow.xrayEnabled || !ns.canScript) {
-    // hook scripting-enabled pages on Firefox only
+    // hook scripting-enabled pages on Firefox Desktop only
     return;
   }
 

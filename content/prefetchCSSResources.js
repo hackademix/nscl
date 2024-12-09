@@ -30,38 +30,41 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
     });
   }
 
-  let createElement = tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+  const createElement = tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
 
-  let corsSheetURLs = new Set();
-  let corsSheetsByHref = new Map();
-  Worlds.connect("prefetchCSSResources", {
-    onMessage (msg, {port, event}) {
-      const {node} = event;
-      switch(msg) {
-        case "isDisabled":
-          let shadow = getShadow(node);
-          return shadow.keepDisabled || (node.sheet && getShadow(node.sheet).keepDisabled);
-        case "accessRules":
-          return !(node.sheet && node.sheet.href && corsSheetURLs.has(node.sheet.href));
-      }
+  const corsSheetURLs = new Set();
+  const corsSheetsByHref = new Map();
+
+  const shadows = new WeakMap();
+  const getShadow = o => {
+    let shadow = shadows.get(o);
+    if (!shadow) shadows.set(o, shadow = {});
+    return shadow;
+  };
+
+  const { port } = prefetchCSSResources;
+  port.onMessage = (msg, {port, event}) => {
+    const { node } = event;
+    switch(msg) {
+      case "isDisabled":
+        let shadow = getShadow(node);
+        return shadow.keepDisabled || (node.sheet && getShadow(node.sheet).keepDisabled);
+      case "accessRules":
+        return !(node.sheet && node.sheet.href && corsSheetURLs.has(node.sheet.href));
     }
-  });
+  };
+
+  port.onConnect = () => port.postMessage("patchWindow");
+  if (port.connected) port.onConnect();
 
   if (typeof ruleCallback !== "function") {
     ruleCallback = null;
   }
 
-  let processed = new WeakSet();
-  let { hostname } = location;
-  let { baseURI } = document;
-  let resources = new Set();
-
-  let shadows = new WeakMap();
-  let getShadow = o => {
-    let shadow = shadows.get(o);
-    if (!shadow) shadows.set(o, shadow = {});
-    return shadow;
-  };
+  const processed = new WeakSet();
+  const { hostname } = location;
+  const { baseURI } = document;
+  const resources = new Set();
 
   const styleClass = HTMLStyleElement, linkClass = HTMLLinkElement;
 
@@ -329,3 +332,5 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
   }
   processAll();
 }
+
+prefetchCSSResources.port = Worlds.connect("prefetchCSSResources", {});

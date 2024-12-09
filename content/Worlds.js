@@ -23,20 +23,59 @@
   const isMainWorld = !(globalThis.browser?.runtime);
   let ended = false;
 
+  // unless we're on Gecko < 128, where MAIN world is not supported and we do everything through xray
+  let splitWorlds = true;
+  let worldsPort;
 
   const { dispatchEvent, addEventListener, removeEventListener, CustomEvent } = self;
   const { Object, Error, Reflect } = globalThis;
 
-  const xrayEnabled = !isMainWorld && globalThis.XPCNativeWrapper;
-  const xrayMake = (enabled, wrap, unwrap = wrap, forPage = wrap) => ({
-    enabled, wrap, unwrap, forPage,
-  });
-  const xray = !xrayEnabled
-  ? xrayMake(false, o => o)
-  : xrayMake(true, o => XPCNativeWrapper(o), o => XPCNativeWrapper.unwrap(o),
-    function(obj, win = window) {
-      return cloneInto(obj, win, {cloneFunctions: true, wrapReflectors: true});
+  const xray = (() => {
+    const xrayEnabled = globalThis.XPCNativeWrapper;
+    const zombieDanger = xrayEnabled && document.readyState === "complete";
+    const isZombieException = e => e.message.includes("dead object");
+
+    const getSafeMethod = zombieDanger
+    ? (obj, method, wrappedObj) => {
+      let actualTarget = obj[method];
+      return XPCNativeWrapper.unwrap(new window.Proxy(actualTarget, cloneInto({
+        apply(targetFunc, thisArg, args) {
+          try {
+            return actualTarget.apply(thisArg, args);
+          } catch (e) {
+            if (isZombieException(e)) {
+              console.debug(`Zombie hit for "${method}", falling back to native wrapper...`);
+              return (actualTarget = (wrappedObj || XPCNativeWrapper(obj))[method]).apply(thisArg, args);
+            }
+            throw e;
+          }
+        },
+      }, window, {cloneFunctions: true, wrapReflectors: true}
+      )));
+    }
+    : (obj, method) => obj[method];
+
+    const getSafeDescriptor = (proto, prop, accessor) => {
+      const des = Reflect.getOwnPropertyDescriptor(proto, prop);
+      if (zombieDanger) {
+        const wrappedDescriptor =  Reflect.getOwnPropertyDescriptor(xray.wrap(proto), prop);
+        des[accessor] = getSafeMethod(des, accessor, wrappedDescriptor);
+      }
+      return des;
+    };
+
+    const xrayMake = (enabled, wrap, unwrap = wrap, forPage = wrap) => ({
+      enabled, wrap, unwrap, forPage,
+      getSafeMethod, getSafeDescriptor
     });
+
+    return !xrayEnabled
+    ? xrayMake(false, o => o)
+    : xrayMake(true, o => XPCNativeWrapper(o), o => XPCNativeWrapper.unwrap(o),
+      function(obj, win = this.window || window) {
+        return cloneInto(obj, win, {cloneFunctions: true, wrapReflectors: true});
+      });
+  })();
 
   const getStack = (() => {
     if ("stackTraceLimit" in Error) {
@@ -96,13 +135,35 @@
   const ports = new Map();
 
   const WORLD_NAMES = ["MAIN", "ISOLATED"];
-  const [here, there] = isMainWorld ? WORLD_NAMES : WORLD_NAMES.reverse();
+  const url = location.href;
+  const here = `${WORLD_NAMES[isMainWorld ? 0 : 1]}@${url}`;
 
   class Port {
+    static match(scriptId) {
+      return ports.get(scriptId?.endsWith(".main") ? scriptId.slice(0, -5) : scriptId);
+    }
+
+    static createMatching(scriptId, handlers) {
+      const other = Port.match(scriptId);
+      const matching = new Port(other?.id, scriptId);
+      if (matching.mergeHandlers(handlers) && other) {
+        matching.connect();
+        other.connect();
+      }
+      return matching;
+    }
+
     constructor(portId, scriptId = "") {
+      let [here, there] = WORLD_NAMES;
+      if (scriptId?.endsWith(".main")) {
+        scriptId = scriptId.slice(0, -5); // drop the ".main" suffix
+      } else if (!isMainWorld) {
+        [here, there] = [there, here];
+      }
+
       this.id = portId ??= `${WORLDS_ID}:${scriptId}:${uuid()}`;
       ports.set(scriptId, this);
-      console.debug(`Creating ${here}->${there} ${portId}`); // DEV_ONLY
+      console.debug(`Creating ${here}->${there} ${portId} - ${url}`); // DEV_ONLY
 
       // we need a double dispatching dance and maintaining a stack of
       // return values / thrown errors because Chromium seals the detail object
@@ -159,7 +220,6 @@
         this.disposed = true;
         fire = NOP;
         this.onConnect = this.onMessage = null;
-        this.connected = false;
         for (let [name, handler] of Object.entries(listeners)) {
           removeEventListener.call(self, name, handler, true);
         }
@@ -180,7 +240,10 @@
       };
     }
 
-    connect() {
+    connect(handlers) {
+      if (handlers) {
+        this.mergeHandlers(handlers);
+      }
       if (typeof this.onConnect === "function" && !this.connected) {
         this.connected = true;
         try {
@@ -199,7 +262,7 @@
   }
 
   const connectWorlds = (scriptId, handlers, portId) => {
-    let port = ports.get(scriptId);
+    let port = Port.match(scriptId);
 
     const isReady = !!portId;
     if (!port) {
@@ -224,6 +287,7 @@
   };
 
   const endWorlds = () => {
+    if (!worldsPort) return; // splitWorlds = false
     worldsPort.postMessage({id: "end"});
     worldsPort.dispose();
     ended = true;
@@ -234,7 +298,7 @@
   };
 
   const endWorldsIfDone = () => {
-    if (![...ports.values()].some(p => !p)) {
+    if (![...ports.values()].some(p => !(p?.connected))) {
       endWorlds();
     }
   };
@@ -245,67 +309,23 @@
         // on Chromium we can try to infer the scriptId from the stack.
         handlers = scriptId;
         const stack = getStack();
-        const scriptMatch = stack[1]?.match(/\/(\w+)(?:\.main)?\.js\b/);
+        const scriptMatch = stack[1]?.match(/\/([\w.]+).js\b/);
         scriptId = scriptMatch && scriptMatch[1];
       }
       if (scriptId) {
-        return connectWorlds(scriptId, handlers);
+        return splitWorlds
+          ? connectWorlds(scriptId, handlers)
+          : Port.createMatching(scriptId, handlers)
+          ;
       }
       throw new Error(`Can't identify scripts to connect on the stack ${stack.join("\n")}. Is this Gecko?`);
     },
     main: {
       console,
       pristine,
+      xray,
     },
   };
-
-  let worldsPort = new Port(WORLDS_ID, "Worlds");
-  let bootstrapped = false;
-  worldsPort.onMessage = (msg => {
-    console.debug(`${here} got message`, msg);
-    switch(msg.id) {
-      case "end":
-        worldsPort.dispose(); // prevent infinite message loop
-        endWorlds();
-        break;
-      case "connect":
-        return ports.get(msg.scriptId)?.id;
-      case "ready":
-        const port = connectWorlds(msg.scriptId, null, msg.portId);
-        return { canHandle: !!(port.onMessage || port.onConnect) };
-      case "bootstrap":
-        if (bootstrapped) return;
-        bootstrapped = true;
-        // Switch to random portId after initial handshake, before page scripts can run
-        const swapPort = new Port(null, "Worlds");
-        swapPort.mergeHandlers(worldsPort);
-        queueMicrotask(() => {
-          worldsPort.dispose();
-          worldsPort = swapPort;
-        });
-        return {
-          ports: [...ports].map(([scriptId, port]) => [scriptId, port?.id]),
-          swapPortId: swapPort.id,
-        };
-    }
-  });
-
-  {
-    const bootstrap = worldsPort.postMessage({id: "bootstrap"});
-    if (bootstrap?.ports) {
-      for(const [scriptId, portId] of bootstrap.ports) {
-        console.debug(`${here} got ${scriptId} ${portId} as bootstrap`); // DEV_ONLY
-        ports.set(scriptId, portId ? new Port(portId, scriptId) : null);
-      }
-    }
-    if (bootstrap?.swapPortId) {
-      // Switch to random portId after initial handshake, before page scripts can run
-      const swapPort = new Port(bootstrap.swapPortId, "Worlds");
-      swapPort.mergeHandlers(worldsPort);
-      worldsPort.dispose();
-      worldsPort = swapPort;
-    }
-  }
 
   Object.freeze(Worlds);
 
@@ -314,7 +334,7 @@
     // proxy the API to validate access (allow only from the same extension)
     let validatingStack = false;
     const validateStack = () => {
-      if (worldsPort.disposed || validatingStack) return;
+      if (worldsPort?.disposed || validatingStack) return;
       validatingStack = true;
       try {
         const stack = getStack();
@@ -341,7 +361,6 @@
           throw new Error(`Unsafe call to ${myOrigin} from ${caller} (${url}, <STACK>\n${stack.join("\n")}\n</STACK>)`);
         }
       } catch (e) {
-        // TODO: reimplement automatic coss-frame patchWindow(), rather than delaying until done
         endWorldsIfDone();
         throw e;
       } finally {
@@ -372,6 +391,7 @@
         return this.Worlds = v;
       }
     });
+
   } else {
     globalThis.Worlds = Worlds;
     // fetch connectable script IDs from manifest
@@ -383,6 +403,58 @@
           ports.set(scriptId, null);
         }
       }));
+    splitWorlds = ports.size > 0;
+  }
+
+  if (splitWorlds) {
+    let bootstrapped = false;
+    worldsPort = new Port(WORLDS_ID, "Worlds");
+
+    worldsPort.connect({
+      onMessage(msg) {
+        console.debug(`${here} got message`, msg);
+        switch(msg.id) {
+          case "end":
+            worldsPort.dispose(); // prevent infinite message loop
+            endWorldsIfDone();
+            break;
+          case "connect":
+            return Port.match(msg.scriptId)?.id;
+          case "ready":
+            const port = connectWorlds(msg.scriptId, null, msg.portId);
+            return { canHandle: !!(port.onMessage || port.onConnect) };
+          case "bootstrap":
+            if (bootstrapped) return;
+            bootstrapped = true;
+            // Switch to random portId after initial handshake, before page scripts can run
+            const swapPort = new Port(null, "Worlds");
+            swapPort.mergeHandlers(worldsPort);
+            queueMicrotask(() => {
+              worldsPort.dispose();
+              worldsPort = swapPort;
+            });
+            return {
+              ports: [...ports].map(([scriptId, port]) => [scriptId, port?.id]),
+              swapPortId: swapPort.id,
+            };
+        }
+      }
+    });
+
+    const bootstrap = worldsPort.postMessage({id: "bootstrap"});
+    if (bootstrap?.ports) {
+      for(const [scriptId, portId] of bootstrap.ports) {
+        console.debug(`${here} got ${scriptId} ${portId} as bootstrap`); // DEV_ONLY
+        ports.set(scriptId, portId ? new Port(portId, scriptId) : null);
+      }
+    }
+    if (bootstrap?.swapPortId) {
+      // Switch to random portId after initial handshake, before page scripts can run
+      const swapPort = new Port(bootstrap.swapPortId, "Worlds");
+      swapPort.mergeHandlers(worldsPort);
+      worldsPort.dispose();
+      worldsPort = swapPort;
+    }
   }
   // just in case, end the Worlds before any page script can run
   setTimeout(function justInCase() {

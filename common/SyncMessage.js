@@ -65,7 +65,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       let wrapper = m.__syncMessage__;
       if (!wrapper) return;
       if(wrapper.retry) {
-        const retryKey = `${sender.tab.id}:${sender.frameId}:${sender.url}`;
+        const retryKey = `${sender.tab.id}:${sender.frameId}:${sender.origin}@${sender.url}`;
         let retried = retries.has(retryKey);
         if (retried) {
           retries.delete(retryKey);

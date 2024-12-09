@@ -66,8 +66,8 @@ ns.on("capabilities", event => {
 
   Worlds.connect("WebGLHook", {
     onConnect(port) {
-      debug(`WebGLHook connected, sending patchGetContext`); // DEV_ONLY
-      port.postMessage("patchGetContext");
+      debug(`WebGLHook connected, sending patchWindow`); // DEV_ONLY
+      port.postMessage("patchWindow");
     },
     onMessage(msg, {port, event}) {
       const {target} = event;
@@ -83,7 +83,6 @@ ns.on("capabilities", event => {
     }
   });
 
-
   debug(`WebGLHook installed on window ${document.URL}.`);
 
   if (!(globalThis.OffscreenCanvas && new OffscreenCanvas(0,0).getContext("webgl"))) {
@@ -92,18 +91,27 @@ ns.on("capabilities", event => {
   }
 
   try {
-    const channelID = `webglHook:${uuid()}`;
-    const bc = new BroadcastChannel(channelID);
-    bc.onmessage = notifyWebGL;
+    const channelID = `webglHook:${self.location.href}:${uuid()}`;
+    try {
+      const bc = new BroadcastChannel(channelID);
+      bc.onmessage = notifyWebGL;
+    } catch (e) {
+      console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
+    }
     const workersPatch = () => {
       console.debug("Installing WebGLHook", self); // DEV_ONLY
-      const bc = new BroadcastChannel(channelID);
       const getContext = OffscreenCanvas.prototype.getContext;
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}`, thisArg, globalThis); // DEV_ONLY
           if (/webgl/i.test(argumentsList[0])) {
-            bc.postMessage({});
+            try {
+              const bc = new BroadcastChannel(channelID);
+              bc.postMessage({});
+              bc.close();
+            } catch (e) {
+              console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
+            }
             return null;
           }
           return getContext.call(thisArg, ...argumentsList);

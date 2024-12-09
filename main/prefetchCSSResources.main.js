@@ -22,14 +22,16 @@
 // depends on /nscl/main/Worlds.main.js
 
 "use strict";
+{
+  const {console, exportFunction, patchWindow} = Worlds.main;
 
-Worlds.connect("prefetchCSSResources", {
-  onConnect(port) {
+  const modifyWindow = (win, {port, xray}) => {
     console.debug("prefetchCSSResources init"); // DEV_ONLY
-    const {exportFunction} = Worlds.main;
-    const { window, StyleSheet } = self.window;
+
+    const { window } = xray;
+    const { StyleSheet } = win;
     const ssProto = StyleSheet.prototype;
-    const cssProto = window.CSSStyleSheet.prototype;
+    const cssProto = win.CSSStyleSheet.prototype;
     // prevent getting fooled by redefined getters
     const getOwnerNode = Object.getOwnPropertyDescriptor(ssProto, "ownerNode").get;
 
@@ -38,25 +40,27 @@ Worlds.connect("prefetchCSSResources", {
       return target && port.postMessage(msg, target);
     };
 
-    // Chromium (only?) requires relaxed CORS and therefore needs
-    // cssRules protection denying access to "privileged" cross-site links.
-    for (const prop of ["rules", "cssRules"]) {
-      const originalGetter = Object.getOwnPropertyDescriptor(cssProto, prop).get;
-      exportFunction(function() {
-        if (!postMessage("accessRules", this)) {
-          throw new DOMException("Security Error",
-            `Failed to read the '${prop}' property from 'CSSStyleSheet': Cannot access rules`);
-        }
-        return originalGetter.apply(this);
-      }, cssProto, {defineAs: `get ${prop}`});
+    if (!xray.enabled) {
+      // Chromium (only?) requires relaxed CORS and therefore needs
+      // cssRules protection denying access to "privileged" cross-site links.
+      for (const prop of ["rules", "cssRules"]) {
+        const originalGetter = Object.getOwnPropertyDescriptor(cssProto, prop).get;
+        exportFunction(function() {
+          if (!postMessage("accessRules", this)) {
+            throw new DOMException("Security Error",
+              `Failed to read the '${prop}' property from 'CSSStyleSheet': Cannot access rules`);
+          }
+          return originalGetter.apply(this);
+        }, cssProto, {defineAs: `get ${prop}`});
+      }
     }
 
-    let mmProto = window.MediaList.prototype;
-    let { appendMedium, deleteMedium, item } = mmProto;
+    const mmProto = win.MediaList.prototype;
+    const { appendMedium, deleteMedium, item } = mmProto;
     // make disable property temporarily readonly if tagged as keepDisabled
-    for (const proto of [ssProto, window.HTMLStyleElement.prototype, window.HTMLLinkElement.prototype]) {
+    for (const proto of [ssProto, win.HTMLStyleElement.prototype, win.HTMLLinkElement.prototype]) {
       const prop = "media";
-      const des = Reflect.getOwnPropertyDescriptor(proto, prop);
+      const des = xray.getSafeDescriptor(proto, prop, "get");
       exportFunction(function(value) {
         if (postMessage("isDisabled", this)) {
           if (this instanceof StyleSheet) {
@@ -102,5 +106,15 @@ Worlds.connect("prefetchCSSResources", {
         return des.set.call(this, value);
       }, proto, {defineAs: `set ${prop}`});
     }
-  }
-});
+  };
+
+  Worlds.connect("prefetchCSSResources.main", {
+    onMessage(msg, {port}) {
+      switch(msg) {
+        case "patchWindow":
+          patchWindow(modifyWindow, {port});
+          break;
+      }
+    }
+  });
+}

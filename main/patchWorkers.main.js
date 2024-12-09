@@ -22,7 +22,7 @@
 
 "use strict";
 {
-  const {console} = Worlds.main;
+  const {console, patchWindow} = Worlds.main;
 
   const failSafe = (() => {
     const urls = new Map();
@@ -49,14 +49,14 @@
     };
   })();
 
-  const patchWorkers = port => {
+  function modifyWindow(w, {port, xray}) {
+
+    const {window} = xray;
+
     // cache and "protect" some "sensitive" built-ins we'll need later
-    const {
-      window,
-      ServiceWorkerContainer, SharedWorker,
-      URL, encodeURIComponent, XMLHttpRequest, Blob,
-      Proxy, Promise
-      } = globalThis.window;
+    const { ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
+          Proxy, Promise } = window;
+    const { SharedWorker, encodeURIComponent } = w;
 
     const error = console.error.bind(console);
 
@@ -64,7 +64,7 @@
     const construct = Reflect.construct.bind(Reflect);
     const apply = Reflect.apply.bind(Reflect);
 
-    const proxify = (obj, handler) => new Proxy(obj, handler);
+    const proxify = (obj, handler) => new Proxy(xray.unwrap(obj), xray.forPage(handler));
 
     const patchRemoteWorkerScript = (url, isServiceOrShared) =>
       port.postMessage({type: "patchUrl", url, isServiceOrShared});
@@ -118,7 +118,7 @@
         }
         // remote patching
         url = url.href;
-        patchRemoteWorkerScript(url, target === SharedWorker);
+        patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === SharedWorker);
         console.debug("Patching remote worker", url); // DEV_ONLY
         const worker = construct(target, args)
         failSafe.add(url, () => apply(terminate, worker, []));
@@ -128,14 +128,14 @@
 
     // Intercept worker constructors
     for (let c of ["Worker", "SharedWorker"]) {
-      window[c] = proxify(window[c], workerHandler);
+      w[c] = proxify(window[c], workerHandler);
     }
 
     // Intercept service worker registration
     const origin = window.location.origin;
     if (ServiceWorkerContainer) {
       const {unregister, update} = ServiceWorkerRegistration.prototype;
-      ServiceWorkerContainer.prototype.register = proxify(ServiceWorkerContainer.prototype.register, {
+      xray.unwrap(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
         apply(target, thisArg, args) {
           console.debug("Patching service worker", args); // DEV_ONLY
           try {
@@ -165,12 +165,12 @@
         }
       });
     }
-    console.debug("patchWorkers.js ready to patch on", location.href); // DEV_ONLY
-  };
+    console.debug("Workers patched on", location.href); // DEV_ONLY
+  }
 
-  Worlds.connect("patchWorkers", {
+  Worlds.connect("patchWorkers.main", {
     onConnect(port) {
-      patchWorkers(port);
+      patchWindow(modifyWindow, {port});
     },
     onMessage(msg, {port}) {
       switch(msg.type) {

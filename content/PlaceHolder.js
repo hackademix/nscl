@@ -94,19 +94,27 @@ var PlaceHolder = (() => {
       }
     };
 
-    let srcStyle = window.getComputedStyle(src, null);
-    let destStyle = dest.style;
-    for (let p of props) {
+    const srcStyle = window.getComputedStyle(src, null);
+    const destStyle = dest.style;
+    for (const p of props) {
       destStyle[p] = srcStyle[p];
     }
-    for (let size of ["width", "height"]) {
+    for (const size of ["width", "height"]) {
       if (/^0(?:\D|$)/.test(destStyle[size])) {
         destStyle[size] = "";
       }
     }
-    if (src.offsetTop < 0 && src.offsetTop <= (-src.offsetHeight)) {
-      destStyle.top = "0"; // fixes video player off-display position on Youtube
+
+    // Work-around for video player displacement on Youtube
+    {
+      const h = src.offsetHeight;
+      if (h > 0 &&
+          (src.offsetTop <= -h || parseInt(srcStyle.bottom) <= -h
+        )) {
+        destStyle.top = destStyle.bottom = "";
+      }
     }
+
     destStyle.display = srcStyle.display !== "block" ? "inline-block" : "block";
   }
 

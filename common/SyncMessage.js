@@ -38,7 +38,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
   const BASE_PREFIX = browser.runtime.getURL(INTERNAL_PATH);
   // We cannot use BASE_PREFIX w/ internal URIs for requests (yet?) because
   // neither DNR nor webRequest nor ServiceWorker intercept our own extension URLs :(
-  const REQUEST_PREFIX = `${IPV6_DUMMY_ENDPOINT}${INTERNAL_PATH}request.json?`;
+  const REQUEST_PREFIX = `${IPV6_DUMMY_ENDPOINT}/${BASE_PREFIX}request.json?`;
   // But we can redirect to extension URLs on MV3
   const RESPONSE_PREFIX = USE_INTERNAL_URIS ? BASE_PREFIX + "response.json?" : "data:application/json,";
 

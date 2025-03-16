@@ -47,7 +47,6 @@ ns.on("capabilities", event => {
     try {
       let ph = PlaceHolder.create("webgl", request);
       ph.replace(canvas);
-      PlaceHolder.listen();
     } catch (e) {
       error(e);
     }

@@ -37,7 +37,6 @@ if ("MediaSource" in window) {
     try {
       let ph = PlaceHolder.create("media", request);
       ph.replace(mediaElement);
-      PlaceHolder.listen();
       debug("mediaBlocker placeholder for %o", mediaElement); // DEV_ONLY
     } catch (e) {
       error(e);

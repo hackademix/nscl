@@ -156,7 +156,7 @@ var PlaceHolder = (() => {
     }
 
     static listen() {
-      window.addEventListener("click", clickListener, true, false);
+      window.addEventListener("click", clickListener, true);
     }
 
     constructor(policyType, request) {
@@ -169,9 +169,6 @@ var PlaceHolder = (() => {
         .filter(element => this.handler.filter(element, request))
           .forEach(element => this.replace(element));
       };
-      if (this.replacements.size) {
-        PlaceHolder.listen();
-      }
     }
 
     replace(element) {
@@ -247,6 +244,7 @@ var PlaceHolder = (() => {
       };
 
       this.replacements.add(replacement);
+      PlaceHolder.listen();
     }
 
     async enable(replacement) {

@@ -123,14 +123,19 @@ if (globalThis.Worlds?.main) {
       // win: window object to modify.
       function modifyWindow(win) {
         try {
-          win = xray.unwrap(win);
-          env.xray = Object.assign({window: xray.wrap(win)}, xray);
+          const unwrappedWindow = xray.unwrap(win);
+          const window = xray.wrap(unwrappedWindow);
+          env.xray = Object.assign({ window }, xray);
+          env.xray.proxify =
+            (propName, handler, scope = window) =>
+              xray.unwrap(scope)[propName] =
+                new window.Proxy(xray.unwrap(scope[propName]), xray.forPage(handler));
 
-          if (patchedWindows.has(win)) return;
-          patchedWindows.add(win);
-          patchingCallback(win, env);
-          modifyWindowOpenMethod(win);
-          modifyFramingElements(win);
+          if (patchedWindows.has(unwrappedWindow)) return;
+          patchedWindows.add(unwrappedWindow);
+          patchingCallback(unwrappedWindow, env);
+          modifyWindowOpenMethod(unwrappedWindow);
+          modifyFramingElements(unwrappedWindow);
           // we don't need to modify win.opener, read skriptimaahinen notes
           // at https://forums.informaction.com/viewtopic.php?p=103754#p103754
         } catch (e) {

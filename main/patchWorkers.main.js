@@ -64,8 +64,6 @@
     const construct = Reflect.construct.bind(Reflect);
     const apply = Reflect.apply.bind(Reflect);
 
-    const proxify = (obj, handler) => new Proxy(xray.unwrap(obj), xray.forPage(handler));
-
     const patchRemoteWorkerScript = (url, isServiceOrShared) =>
       port.postMessage({type: "patchUrl", url, isServiceOrShared});
 
@@ -127,15 +125,15 @@
     };
 
     // Intercept worker constructors
-    for (let c of ["Worker", "SharedWorker"]) {
-      w[c] = proxify(window[c], workerHandler);
+    for (const clazz of ["Worker", "SharedWorker"]) {
+      xray.proxify(clazz, workerHandler);
     }
 
     // Intercept service worker registration
     const origin = window.location.origin;
     if (ServiceWorkerContainer) {
       const {unregister, update} = ServiceWorkerRegistration.prototype;
-      xray.unwrap(ServiceWorkerContainer.prototype).register = proxify(ServiceWorkerContainer.prototype.register, {
+      xray.proxify("register", {
         apply(target, thisArg, args) {
           console.debug("Patching service worker", args); // DEV_ONLY
           try {
@@ -163,7 +161,7 @@
           registration.then(r => apply(update, r, []));
           return registration;
         }
-      });
+      }, ServiceWorkerContainer.prototype);
     }
     console.debug("Workers patched on", location.href); // DEV_ONLY
   }

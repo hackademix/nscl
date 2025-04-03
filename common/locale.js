@@ -54,7 +54,6 @@ var i18n = (() => {
   		for (let i = 0, maxi = attributes.snapshotLength; i < maxi; i++)
   		{
   			let attribute = attributes.snapshotItem(i);
-  			debug('apply', attribute);
   			attribute.value = this.updateString(attribute.value);
   		}
   	}

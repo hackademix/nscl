@@ -125,11 +125,12 @@ if (globalThis.Worlds?.main) {
         try {
           const unwrappedWindow = xray.unwrap(win);
           const window = xray.wrap(unwrappedWindow);
+          const Proxy = window.Proxy;
           env.xray = Object.assign({ window }, xray);
           env.xray.proxify =
             (propName, handler, scope = window) =>
               xray.unwrap(scope)[propName] =
-                new window.Proxy(xray.unwrap(scope[propName]), xray.forPage(handler));
+                new Proxy(xray.unwrap(scope[propName]), xray.forPage(handler));
 
           if (patchedWindows.has(unwrappedWindow)) return;
           patchedWindows.add(unwrappedWindow);

@@ -145,6 +145,17 @@ var Policy = (() => {
       return {url, type, documentUrl};
     }
 
+    autoAllow(url, perms, force) {
+      if (!(force || (this.autoAllowTop && perms === this.DEFAULT))) {
+        return null;
+      }
+      const siteKey = Sites.optimalKey(url);
+      perms = this.DEFAULT.tempTwin.clone();
+      perms.contextual.set(siteKey, this.TRUSTED.tempTwin);
+      this.set(siteKey, perms);
+      return perms;
+    }
+
     set(site, perms, cascade = false) {
       let sites = this.sites;
       let {url, siteKey} = Sites.parse(site);

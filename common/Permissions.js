@@ -35,7 +35,7 @@ var Permissions = (() => {
     constructor(capabilities, temp = false, contextual = null) {
       this.capabilities = new Set(capabilities);
       this.temp = temp;
-      this.contextual = contextual instanceof Sites ? contextual : new Sites(contextual);
+      this.contextual = new Sites(contextual);
     }
 
     dry() {

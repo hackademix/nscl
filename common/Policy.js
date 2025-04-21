@@ -166,9 +166,9 @@ var Policy = (() => {
         }
       }
 
-      if (!perms || perms === this.DEFAULT) {
+      if (!perms) {
         perms = this.DEFAULT;
-      } else {
+      } else if (perms !== this.DEFAULT) {
         sites.set(siteKey, perms);
       }
       return {siteKey, perms};

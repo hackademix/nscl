@@ -78,8 +78,8 @@ var Permissions = (() => {
       }
       return true;
     }
-    clone() {
-      return new Permissions(this.capabilities, this.temp, this.contextual);
+    clone(noContext = false) {
+      return new Permissions(this.capabilities, this.temp, noContext ? null : this.contextual);
     }
     get tempTwin() {
       return this._tempTwin || (this._tempTwin = new Permissions(this.capabilities, true, this.contextual));

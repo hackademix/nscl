@@ -210,7 +210,19 @@ var Policy = (() => {
       return JSON.stringify(this.dry(true));
     }
 
-    cascadeRestrictions(perms, topUrl) {
+    cascadeRestrictions(policyMatch, topUrl) {
+      let { contextMatch, perms } = policyMatch;
+      if (contextMatch) {
+        return perms;
+      }
+
+      // support legacy API where arg0 == perms
+      perms ||= policyMatch;
+      const ctxPerms = perms.contextual?.get(topUrl);
+      if (ctxPerms) {
+        return ctxPerms;
+      }
+
       let topPerms = this.get(topUrl, topUrl).perms;
       if (topPerms !== perms) {
         let topCaps = topPerms.capabilities;

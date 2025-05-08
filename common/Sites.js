@@ -98,7 +98,7 @@ var Sites = (() => {
         }
         let path = url.pathname;
         siteKey = url.origin;
-        if (siteKey === "null") {
+        if (siteKey === "null" || siteKey === "file://") {
           ([siteKey] = site.split(/[?#]/)); // drop any search / hash segment
         } else if (path !== '/' || url.hostname && site?.endsWith('/')) {
           siteKey += path;
@@ -109,7 +109,14 @@ var Sites = (() => {
 
     static optimalKey(site) {
       let {url, siteKey} = Sites.parse(site);
-      if (url && url.protocol === "https:") return Sites.secureDomainKey(tld.getDomain(url.hostname));
+      if (url) {
+        if (url.protocol === "https:") {
+          return Sites.secureDomainKey(tld.getDomain(url.hostname));
+        }
+        if (url.protocol === "file:") {
+          return Sites.trimToDir(siteKey);
+        }
+      }
       return Sites.origin(url) || siteKey;
     }
 
@@ -118,7 +125,7 @@ var Sites = (() => {
       try {
         let objUrl = (typeof site === "object" && "origin" in site) ? site : site.startsWith("chrome:") ? {origin: "chrome:" } : new URL(site);
         let {origin} = objUrl;
-        return origin === "null" ? Sites.cleanUrl(objUrl) || site : origin;
+        return origin === "null" || origin === "file://" ? Sites.cleanUrl(objUrl) || site : origin;
       } catch (e) {
         error(e, JSON.stringify(site));
       };
@@ -138,6 +145,10 @@ var Sites = (() => {
       } catch (e) {
         return null;
       }
+    }
+
+    static trimToDir(urlString) {
+      return urlString.replace(/[^/]+$/, '');
     }
 
     static toExternal(url) { // domains are stored in punycode internally
@@ -170,13 +181,18 @@ var Sites = (() => {
         }
 
         if (url) {
-          let {origin} = url;
+          const { origin } = url;
           if (origin && origin !== "null" && origin < siteKey && this.has(origin)) {
             return origin;
           }
-          let domain = this.domainMatch(url);
-          if (domain) return domain;
-          let protocol = url.protocol;
+          const { protocol } = url;
+          if (protocol == "file:") {
+            const key = Sites.trimToDir(siteKey);
+            if (this.has(key)) return key;
+          } else {
+            const domain = this.domainMatch(url);
+            if (domain) return domain;
+          }
           if (this.has(protocol)) {
             return protocol;
           }

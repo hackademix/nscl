@@ -151,9 +151,10 @@ var Policy = (() => {
       }
       const siteKey = Sites.optimalKey(url);
       perms = this.DEFAULT.tempTwin.clone();
-      perms.contextual.set(siteKey, this.TRUSTED.tempTwin);
+      const autoPerms = this.TRUSTED.tempTwin;
+      perms.contextual.set(siteKey, autoPerms);
       this.set(siteKey, perms);
-      return perms;
+      return autoPerms;
     }
 
     set(site, perms, cascade = false) {

@@ -25,42 +25,59 @@ var NavCache = (() => {
 
   let clone = structuredClone || (o => JSON.parse(JSON.stringify(o)));
 
-  browser.webNavigation.onCommitted.addListener(({tabId, frameId, url, parentFrameId}) => {
-    let tab = tabs[tabId];
-    let frame = tab && tab[frameId];
-    if (!tab || frameId == 0) {
-      tabs[tabId] = tab = {};
-    }
-    let previousUrl = frame && frame.url;
-    frame = tab[frameId] = {previousUrl, url, parentFrameId};
-    if (previousUrl !== url) {
-      for (let l of listeners) {
-        try {
-          l(Object.assign({tabId, frameId}, frame));
-        } catch (e) {
-          console.error(e);
+  const navListener = ({ tabId, frameId, url, parentFrameId }) => {
+      let tab = tabs[tabId];
+      let frame = tab && tab[frameId];
+      if (!tab) {
+        tabs[tabId] = tab = {
+          tabId,
+          topUrls: new Set(),
+        };
+      }
+      let previousUrl = frame?.url;
+      frame = tab[frameId] = {
+        tabId,
+        frameId,
+        parentFrameId,
+        previousUrl,
+        url,
+      };
+      if (parentFrameId == -1) tab.topUrls.add(url);
+      if (previousUrl !== url) {
+        for (const l of listeners) {
+          try {
+            l(clone(frame));
+          } catch (e) {
+            console.error(e);
+          }
         }
       }
-    }
-  });
+      populateFrames({ id: tabId }); // async refresh / garbage collect frames
+    };
+
+  browser.webNavigation.onBeforeNavigate.addListener(navListener);
+  browser.webNavigation.onCommitted.addListener(navListener);
 
   browser.tabs.onRemoved.addListener(tabId => {
     delete tabs[tabId];
   });
 
+  async function populateFrames(tab) {
+    let tabId = tab.id;
+    let frames =  await browser.webNavigation.getAllFrames({tabId});
+    if (!frames) return; // invalid tab
+    const t = tabs[tabId] ||= {
+      tabId,
+      topUrls: new Set(),
+    };
+    for ({frameId, url, parentFrameId} of frames) {
+      t[frameId] = {tabId, frameId, url, parentFrameId};
+      if (parentFrameId == -1) t.topUrls.add(url);
+    }
+  }
 
   return {
     wakening: (async () => {
-      async function populateFrames(tab) {
-        let tabId = tab.id;
-        let frames =  await browser.webNavigation.getAllFrames({tabId});
-        if (!frames) return; // invalid tab
-        if (!tabs[tabId]) tabs[tabId] = {};
-        let top = tabs[tabId];
-        for ({frameId, url, parentFrameId} of frames) {
-          tab[frameId] = {url, parentFrameId};
-        }
-      }
       await Promise.all((await browser.tabs.query({})).map(populateFrames));
       return true;
     })(),

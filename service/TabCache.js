@@ -39,6 +39,9 @@ var TabCache = (() => {
     get(tabId) {
       return cache.get(tabId);
     },
+    getAll() {
+      return Array.from(cache.values());
+    },
     async async(tabId) {
       return cache.get(tabId) || await browser.tabs.get(tabId);
     }

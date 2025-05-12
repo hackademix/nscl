@@ -46,13 +46,20 @@ var DocStartInjection = (() => {
 
   async function begin(request) {
     let scripts = new Set();
-    let {tabId, frameId, url, type} = request;
+    let {tabId, frameId, url, type, documentId, documentLifecycle, frameType} = request;
+
     if (tabId < 0 || !/^(?:(?:https?|ftp|data|blob|file):|about:blank$)/.test(url)) return;
-    if (type === "main_frame") frameId = 0;
+
+    if (!type && frameId == 0) {
+      type = "main_frame"; // Gecko uses webNavigation.onBeforeNavigate, no request type
+    }
+    if (documentLifecycle == "prerender" && frameType == "outmostframe") {
+      debug("Prerendering top frame", tabId, frameId, url); // DEV_ONLY
+    }
     await Promise.allSettled([...scriptBuilders].map(async buildScript => {
       let script;
       try {
-        script = await buildScript({tabId, frameId, url});
+        script = await buildScript({tabId, frameId, url, type});
         if (!script) return;
         if (mv3Callbacks) {
           if (typeof script !== "object") {
@@ -117,7 +124,7 @@ var DocStartInjection = (() => {
           return document.readyState === "loading";
         },
         args: [url, injectionId, [...scripts]],
-        target: {tabId, frameIds: [frameId]},
+        target: documentId ? {tabId, documentIds: [documentId] } : {tabId, frameIds: [frameId]},
         injectImmediately: true,
       } :
       // mv2 browser.tabs.executeScript()

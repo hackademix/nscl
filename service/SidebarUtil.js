@@ -19,44 +19,55 @@
  */
 
 var SidebarUtil = {
+  // Returns the difference between the outer and the inner width of the
+  // window containing the tab identified by tabId, or of a new one in
+  // the currently focused window
   async guessSidebarWidth(tabId = -1) {
     if (!browser.windows) return 0;
     const window = await (tabId >= 0
       ? browser.windows.get((await browser.tabs.get(tabId)).windowId)
       : browser.windows.getLastFocused());
-      return new Promise(async (resolve, reject) => {
-        let tab;
-        const onTab =  async (tabId, changeInfo, tabInfo) => {
-          if (tabId != tab?.id || changeInfo.status != "complete") {
-            return;
-          }
-          browser.tabs.onUpdated.removeListener(onTab);
-          const outerWidth = window.width;
-          try {
-            await include("/nscl/service/Scripting.js");
-            const innerWidth = (
-              await Scripting.executeScript({
-                target: { tabId: tab.id, frameId: 0 },
-                func: () => window.innerWidth,
-              })
-            )[0].result;
+
+    const getExtraWidth = async tabId => {
+      const outerWidth = window.width;
+      try {
+        await include("/nscl/service/Scripting.js");
+        const innerWidth = (
+          await Scripting.executeScript({
+            target: { tabId, frameId: 0 },
+            func: () => window.innerWidth,
+          })
+        )[0].result;
+        return outerWidth - innerWidth;
+      } catch (e) {
+        console.error(e);
+      }
+      return -1;
+    };
+
+    return tabId > -1
+      ? await getExtraWidth(tabId)
+      : new Promise(async resolve => {
+          let tab;
+          const onTab = async (tabId, changeInfo, tabInfo) => {
+            if (tabId != tab?.id || changeInfo.status != "complete") {
+              return;
+            }
+            browser.tabs.onUpdated.removeListener(onTab);
+            resolve(await getExtraWidth(tab.id));
             browser.tabs.remove(tab.id);
-            resolve(outerWidth - innerWidth);
+          };
+          browser.tabs.onUpdated.addListener(onTab);
+          try {
+            tab = await browser.tabs.create({
+              windowId: window.id,
+              active: false,
+              url: browser.runtime.getURL("manifest.json"),
+            });
           } catch (e) {
-            reject(e);
+            resolve(-1);
+            browser.tabs.onUpdated.removeListener(onTab);
           }
-        };
-        browser.tabs.onUpdated.addListener(onTab);
-        try {
-          tab = await browser.tabs.create({
-            windowId: window.id,
-            active: false,
-            url: browser.runtime.getURL("manifest.json"),
-          });
-        } catch (e) {
-          browser.tabs.onUpdated.removeListener(onTab);
-          reject(e);
-        }
-      });
-    },
+        });
+  },
 };

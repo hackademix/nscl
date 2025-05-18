@@ -78,13 +78,13 @@ var Policy = (() => {
    * Depends on Permissions.js and Sites.js.
    */
   class Policy {
-
     constructor(options = defaultOptions()) {
       Object.assign(this, normalizePolicyOptions(options));
     }
 
     static hydrate(dry, policyObj) {
-      return policyObj ? Object.assign(policyObj,  normalizePolicyOptions(dry))
+      return policyObj
+        ? Object.assign(policyObj, normalizePolicyOptions(dry))
         : new Policy(dry);
     }
 
@@ -94,12 +94,12 @@ var Policy = (() => {
         untrusted = [],
         custom = Object.create(null);
 
-      const {DEFAULT, TRUSTED, UNTRUSTED} = this;
-      for(let [key, perms] of this.sites) {
+      const { DEFAULT, TRUSTED, UNTRUSTED } = this;
+      for (let [key, perms] of this.sites) {
         if (!includeTemp && perms.temp) {
           continue;
         }
-        switch(perms) {
+        switch (perms) {
           case TRUSTED:
             trusted.push(key);
             break;
@@ -119,7 +119,7 @@ var Policy = (() => {
       let sites = {
         trusted,
         untrusted,
-        custom
+        custom,
       };
       if (includeTemp) {
         sites.temp = temp;
@@ -142,15 +142,19 @@ var Policy = (() => {
 
     static explodeKey(requestKey) {
       let [, type, url, documentUrl] = /(\w+)@([^<]+)<(.*)/.exec(requestKey);
-      return {url, type, documentUrl};
+      return { url, type, documentUrl };
     }
 
     autoAllow(url, perms, force) {
-      if (!(force || (this.autoAllowTop && perms === this.DEFAULT))) {
+      if (
+        !(force || this.autoAllowTop) ||
+        perms == this.UNTRUSTED ||
+        perms == this.TRUSTED
+      ) {
         return null;
       }
       const siteKey = Sites.optimalKey(url);
-      perms = this.DEFAULT.tempTwin.clone();
+      perms = (perms == this.DEFAULT ? perms.tempTwin : perms).clone();
       const autoPerms = this.TRUSTED.tempTwin;
       perms.contextual.set(siteKey, autoPerms);
       this.set(siteKey, perms);
@@ -159,7 +163,7 @@ var Policy = (() => {
 
     set(site, perms, cascade = false) {
       let sites = this.sites;
-      let {url, siteKey} = Sites.parse(site);
+      let { url, siteKey } = Sites.parse(site);
 
       sites.delete(siteKey);
       let wideSiteKey = Sites.toggleSecureDomainKey(siteKey, false);
@@ -173,7 +177,7 @@ var Policy = (() => {
         }
       }
       if (cascade && !url) {
-        for (let subMatch; (subMatch = sites.match(siteKey));) {
+        for (let subMatch; (subMatch = sites.match(siteKey)); ) {
           sites.delete(subMatch);
         }
       }
@@ -183,12 +187,13 @@ var Policy = (() => {
       } else if (perms !== this.DEFAULT) {
         sites.set(siteKey, perms);
       }
-      return {siteKey, perms};
+      return { siteKey, perms };
     }
 
     get(site, ctx = null) {
       let perms, contextMatch;
-      let siteMatch = !(this.onlySecure && /^\w+tp:/i.test(site)) && this.sites.match(site);
+      let siteMatch =
+        !(this.onlySecure && /^\w+tp:/i.test(site)) && this.sites.match(site);
       if (siteMatch) {
         perms = this.sites.get(siteMatch);
         if (ctx) {
@@ -199,12 +204,11 @@ var Policy = (() => {
         perms = this.DEFAULT;
       }
 
-      return {perms, siteMatch, contextMatch};
+      return { perms, siteMatch, contextMatch };
     }
 
     can(url, capability = "script", ctx = null) {
-      return !this.enforced ||
-        this.get(url, ctx).perms.allowing(capability);
+      return !this.enforced || this.get(url, ctx).perms.allowing(capability);
     }
 
     get snapshot() {
@@ -227,8 +231,11 @@ var Policy = (() => {
       let topPerms = this.get(topUrl, topUrl).perms;
       if (topPerms !== perms) {
         let topCaps = topPerms.capabilities;
-        perms = new Permissions([...perms.capabilities].filter(c => topCaps.has(c)),
-          perms.temp, perms.contextual);
+        perms = new Permissions(
+          [...perms.capabilities].filter(c => topCaps.has(c)),
+          perms.temp,
+          perms.contextual
+        );
       }
       return perms;
     }
@@ -239,15 +246,24 @@ var Policy = (() => {
 
     getPresets(presetNames = "*") {
       if (!Array.isArray(presetNames)) {
-        presetNames = presetNames === "*" ? ["TRUSTED", "UNTRUSTED", "DEFAULT", "CUSTOM"] : [presetNames];
+        presetNames =
+          presetNames === "*"
+            ? ["TRUSTED", "UNTRUSTED", "DEFAULT", "CUSTOM"]
+            : [presetNames];
       }
       let policy = this;
       let customIdx = presetNames.indexOf("CUSTOM");
-      let presets = presetNames.map(p => policy[p])
+      let presets = presetNames.map(p => policy[p]);
       if (customIdx !== -1) {
         let { TRUSTED, UNTRUSTED } = policy;
         // insert custom presets, if any
-        presets.splice(customIdx, 1, ...[...policy.sites.values()].filter(p => p !== TRUSTED && p !== UNTRUSTED));
+        presets.splice(
+          customIdx,
+          1,
+          ...[...policy.sites.values()].filter(
+            p => p !== TRUSTED && p !== UNTRUSTED
+          )
+        );
       }
       return presets;
     }

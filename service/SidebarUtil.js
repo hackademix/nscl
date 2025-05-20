@@ -18,6 +18,8 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+// depends on nscl/service/SidebarUtil.tab.js
+
 var SidebarUtil = {
   // Returns the difference between the outer and the inner width of the
   // window containing the tab identified by tabId, or of a new one in
@@ -62,7 +64,7 @@ var SidebarUtil = {
             tab = await browser.tabs.create({
               windowId: window.id,
               active: false,
-              url: browser.runtime.getURL("manifest.json"),
+              url: browser.runtime.getURL("nscl/service/SidebarUtil.tab.js"),
             });
           } catch (e) {
             resolve(-1);

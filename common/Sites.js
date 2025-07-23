@@ -152,7 +152,7 @@ var Sites = (() => {
     }
 
     static toExternal(url) { // domains are stored in punycode internally
-      let s = typeof url === "string" ? url : url && url.toString() || "";
+      let s = typeof url === "string" ? url : url?.toString() || "";
       if (s.startsWith(SECURE_DOMAIN_PREFIX)) s = s.substring(SECURE_DOMAIN_PREFIX.length);
       let [,domain] = DOMAIN_RX.exec(s);
       return domain.startsWith("xn--") ?

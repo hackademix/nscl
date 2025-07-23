@@ -127,7 +127,7 @@
       return await browser.runtime.sendMessage(args);
     },
     isMissingEndpoint(error) {
-      return error && error.message ===
+      return error?.message ===
         "Could not establish connection. Receiving end does not exist.";
     },
     wakening: false,

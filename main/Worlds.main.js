@@ -260,7 +260,7 @@ if (globalThis.Worlds?.main) {
           },
           contentDocument() {
             let document = origGetter.call(this);
-            if (document && document.defaultView) modifyWindow(document.defaultView);
+            if (document?.defaultView) modifyWindow(document.defaultView);
             return document;
           }
         };

@@ -28,7 +28,7 @@ if (typeof flextabs === "function") {
     let rx = new RegExp(`(?:^|[#;])tab-${id}=(\\d+)(?:;|$)`);
     let current = location.hash.match(rx);
     if (!current) {
-      current = localStorage && localStorage.getItem(storageKey);
+      current = localStorage?.getItem(storageKey);
     } else {
       current = current[1];
     }

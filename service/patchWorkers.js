@@ -82,7 +82,7 @@
         documentUrl = new URL(documentUrl).origin;
       }
       let patchInfo = byOrigin.get(documentUrl);
-      if (!(patchInfo && patchInfo.urls.has(url))) return;
+      if (!(patchInfo?.urls.has(url))) return;
 
       console.debug(`Patching ${tabId == -1 ? 'service' : ''}worker`, requestId, url, documentUrl); // DEV_ONLY REMOVEME
       let filter = browser.webRequest.filterResponseData(requestId);

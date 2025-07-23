@@ -47,8 +47,8 @@ var DNS = {
     },
 
     set: function(host, dnsrec) {
-      let timestamp = Date.now();
-      let expiry = timestamp + (dnsrec.addresses && dnsrec.addresses.length ? DNS.cache.TTL : DNS.cache.INVALID_TTL);
+      const timestamp = Date.now();
+      const expiry = timestamp + (dnsrec.addresses?.length ? DNS.cache.TTL : DNS.cache.INVALID_TTL);
       DNS.cache._.set(host, {
         dnsrec,
         timestamp,

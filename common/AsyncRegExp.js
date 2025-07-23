@@ -129,7 +129,7 @@ var AsyncRegExp = (() => {
     static connectWorker(worker) {
       worker.addEventListener("message", e => {
         const {data} = e;
-        if (!(data && data.asyncRegExp)) {
+        if (!(data?.asyncRegExp)) {
           return;
         }
         debug("AsyncRegExp worker.onmessage", data);

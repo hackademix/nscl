@@ -23,7 +23,7 @@
 
 "use strict";
 ns.on("capabilities", event => {
-  debug(`WebGLHook on ${document.URL} ${document.readyState} ${document.documentElement && document.documentElement.innerHTML}`, ns.capabilities); // DEV_ONLY
+  debug(`WebGLHook on ${document.URL} ${document.readyState} ${document.documentElement?.innerHTML}`, ns.capabilities); // DEV_ONLY
   if (!ns.canScript || ns.allows("webgl") ||
       !("HTMLCanvasElement" in window && document.createElement("canvas").getContext("webgl"))) {
     debug(`WebGLHook bailing out, no need to block webgl  on ${document.URL}.`); // DEV_ONLY

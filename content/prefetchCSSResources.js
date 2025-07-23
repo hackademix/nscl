@@ -50,7 +50,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         let shadow = getShadow(node);
         return shadow.keepDisabled || (node.sheet && getShadow(node.sheet).keepDisabled);
       case "accessRules":
-        return !(node.sheet && node.sheet.href && corsSheetURLs.has(node.sheet.href));
+        return !(node.sheet?.href && corsSheetURLs.has(node.sheet.href));
     }
   };
 
@@ -216,7 +216,7 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
         }
         (async () => {
           await sendMessage("enableCORS", {url});
-          let parent = ownerNode && ownerNode.parentElement || document.documentElement;
+          const parent = ownerNode?.parentElement || document.documentElement;
           parent.insertBefore(link, ownerNode || null);
         })();
       });

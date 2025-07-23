@@ -59,7 +59,7 @@ function patchWindow(patchingCallback, env = {}) {
   const forcedPortId = patchingCallback.portId;
   const justPort = forcedPortId && !patchingCallback.code;
   const portId = forcedPortId ||
-    this && this.portId ||
+    this?.portId ||
     `windowPatchMessages:${uuid()}`;
 
   const { dispatchEvent, addEventListener } = self;
@@ -123,7 +123,7 @@ function patchWindow(patchingCallback, env = {}) {
       nativeExport ? new Function("unwrappedWindow", "env", patchingCallback)
       : `function (unwrappedWindow, env) {\n${patchingCallback}\n}`;
   }
-  if (!(nativeExport || this && this.exportFunction)) {
+  if (!(nativeExport || this?.exportFunction)) {
     // Chromium
     let exportFunction = (func, targetObject, {defineAs, original} = {}) => {
       try {
@@ -419,8 +419,8 @@ function patchWindow(patchingCallback, env = {}) {
         return win;
       },
       contentDocument() {
-        let document = origGetter.call(this);
-        if (document && document.defaultView) modifyWindow(document.defaultView);
+        const document = origGetter.call(this);
+        if (document?.defaultView) modifyWindow(document.defaultView);
         return document;
       }
     };

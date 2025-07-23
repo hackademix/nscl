@@ -94,7 +94,7 @@
   options.push('requestHeaders');
   browser.webRequest.onBeforeSendHeaders.addListener(r => {
     let crossSite = corsInfo(r);
-    if (!(crossSite && crossSite.authorize)) return;
+    if (!(crossSite?.authorize)) return;
     // here we try to force a cached response
     let {requestHeaders} = r;
     for (let h of requestHeaders) {
@@ -146,7 +146,7 @@
 
   let cleanup = r => {
     let crossSite = corsInfo(r, true);
-    if (!(crossSite && crossSite.authorize)) return;
+    if (!(crossSite?.authorize)) return;
     if (!r.fromCache) {
       debug("Warning: cross-site CSS request from CSS resource prefetching NOT from cache.");
     }

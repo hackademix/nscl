@@ -38,9 +38,9 @@ var tld = (() => {
     },
 
     parse(host, options = false) {
-      let excludePrivateTLD = options && options.exludePrivateTLD;
-      let excludeUnknownTLD = options && options.excludeUnknownTLD;
-      let preserveFQDNs = options && options.preserveFQDNs || this.preserveFQDNs;
+      let excludePrivateTLD = options?.exludePrivateTLD;
+      let excludeUnknownTLD = options?.excludeUnknownTLD;
+      let preserveFQDNs = options?.preserveFQDNs || this.preserveFQDNs;
 
       if (!preserveFQDNs) host = this.normalize(host);
 

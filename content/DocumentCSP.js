@@ -81,7 +81,7 @@ class DocumentCSP {
         document.replaceChild(root, document.documentElement);
       }
     } catch (e) {
-      error(e, "Error inserting CSP %s in %s", document.URL, header && header.value);
+      error(e, "Error inserting CSP %s in %s", document.URL, header?.value);
       return null;
     }
     return CSP.normalize(header.value);

@@ -20,8 +20,6 @@
 
 "use strict";
 (() => {
-  let requiredCORS = !UA.isMozilla;
-
   let enabled = new Map();
   let corsInfoCache = new Map();
   browser.tabs.onRemoved.addListener(tab => {
@@ -92,22 +90,33 @@
   }
 
   options.push('requestHeaders');
+
+  function patchHeaders(headers, patch) {
+    for (const h of headers) {
+      const name = h.name.toLowerCase();
+      if (name in patch) {
+        h.value = patch[name];
+        delete patch[name];
+      }
+    }
+    for (const [name, value] of Object.entries(patch)) {
+      headers.push({name, value});
+    }
+  }
+
   browser.webRequest.onBeforeSendHeaders.addListener(r => {
     let crossSite = corsInfo(r);
     if (!(crossSite?.authorize)) return;
     // here we try to force a cached response
     let {requestHeaders} = r;
-    for (let h of requestHeaders) {
-      let name = h.name.toLowerCase();
-      if (name === "cache-control") {
-        h.value = "max-age=604800"
-      }
-    }
+    patchHeaders(requestHeaders, {
+      "cache-control": "max-age=604800",
+    });
     return {requestHeaders};
   }, allCssFilter, options);
 
   options[1] = 'responseHeaders';
-  if (requiredCORS) {
+  if (!UA.isMozilla) {
     options.push('extraHeaders'); // required by Chromium to handle CORS headers
   }
 
@@ -117,9 +126,8 @@
     let {authorize, origin} = crossSite;
     let {responseHeaders} = r;
 
-    if (authorize && !requiredCORS) return; // on Firefox we just need caching
-
-    let headersPatch = Object.assign(Object.create(null), authorize
+    patchHeaders(responseHeaders,
+      authorize
       ? {
         "cache-control": "no-store",
         "vary": "origin",
@@ -127,19 +135,8 @@
       }
       : {
         "cache-control": "private, max-age=604800, immutable"
-      });
-
-    for (let h of responseHeaders) {
-      let name = h.name.toLowerCase();
-      if (name in headersPatch) {
-        h.value = headersPatch[name];
-        delete headersPatch[name];
       }
-    }
-
-    for (let [name, value] of Object.entries(headersPatch)) {
-      responseHeaders.push({name, value});
-    }
+    );
 
     return {responseHeaders};
   }, allCssFilter, options);

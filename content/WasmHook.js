@@ -24,7 +24,7 @@
 "use strict";
 ns.on("capabilities", event => {
   debug(`WasmHook on ${document.URL} ${document.readyState} ${document.documentElement?.innerHTML}`, ns.capabilities); // DEV_ONLY
-  if (!ns.canScript || ns.allows("webasm") ||
+  if (!ns.canScript || ns.allows("wasm") ||
       !("WebAssembly" in globalThis)) {
     debug(`WasmHook bailing out, no need to block WebAssembly  on ${document.URL}.`); // DEV_ONLY
     return;

@@ -93,6 +93,7 @@ var Permissions = (() => {
     "media",
     "frame",
     "font",
+    "wasm",
     "webgl",
     "fetch",
     "ping",
@@ -106,6 +107,7 @@ var Permissions = (() => {
     UNTRUSTED: {
       "script": false,
       "object": false,
+      "wasm": false,
       "webgl": false,
       "fetch": false,
       "other": false,

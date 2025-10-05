@@ -30,7 +30,7 @@ ns.on("capabilities", event => {
     return;
   }
 
-  const notifyWasm = () => {
+  const notify = () => {
     let request = {
       id: "noscript-wasm",
       type: "wasm",
@@ -42,18 +42,17 @@ ns.on("capabilities", event => {
     notifyPage();
   }
 
-  addEventListener("error", e => {
-    if (/Error.*WebAssembly/.test(e.message)) {
-      notifyWasm();
-    }
-  }, true);
-
   Worlds.connect("WasmHook", {
     onConnect(port) {
       debug(`WasmHook connected, sending patchWindow`); // DEV_ONLY
       port.postMessage("patchWindow");
     },
     onMessage: m => {
+      switch(m) {
+        case "notify":
+          notify();
+        break;
+      }
     },
   });
 

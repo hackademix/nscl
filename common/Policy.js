@@ -145,6 +145,11 @@ var Policy = (() => {
       return { url, type, documentUrl };
     }
 
+    revokeTemp() {
+      Policy.hydrate(this.dry(), this);
+      return this;
+    }
+
     autoAllow(url, perms, force) {
       if (
         !(force || this.autoAllowTop) ||

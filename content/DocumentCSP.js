@@ -41,7 +41,7 @@ class DocumentCSP {
     let blocker = csp.buildFromCapabilities(capabilities, embedding);
     if (!blocker) return null;
 
-    let createHTMLElement =
+    const createHTMLElement =
       tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
 
     let header = csp.asHeader(blocker);

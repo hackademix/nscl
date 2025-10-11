@@ -27,13 +27,13 @@ var NoscriptElements = {
   emulate(emulateMetaRefresh = true) {
     this.emulate = () => {}; // call me just once
 
-   let replace = (noscript) => {
+    let replace = (noscript) => {
       // force show NOSCRIPT elements content
-      let replacement = createHTMLElement("span");
+      const replacement = document.createElementNS("http://www.w3.org/1999/xhtml", "span");
       replacement.innerHTML = noscript.innerHTML;
       // emulate meta-refresh
       if (emulateMetaRefresh) {
-        for (let meta of replacement.querySelectorAll('meta[http-equiv="refresh"]')) {
+        for (const meta of replacement.querySelectorAll('meta[http-equiv="refresh"]')) {
           this.refresh = document.readyState;
           document.head.appendChild(meta);
           debug(`State %s, emulating`, document.readyState, meta);
@@ -43,7 +43,7 @@ var NoscriptElements = {
         document.body.insertBefore(noscript, document.body.firstChild);
       }
       // copy attributes
-      for (let {name, value, namespaceURI} of noscript.attributes) {
+      for (const {name, value, namespaceURI} of noscript.attributes) {
         replacement.setAttributeNS(namespaceURI, name, value);
       }
       noscript.replaceWith(replacement);

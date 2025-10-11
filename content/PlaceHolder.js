@@ -24,6 +24,9 @@ var PlaceHolder = (() => {
   const SELECTOR = `a.${CLASS_NAME.split(/\s+/).join('.')}`;
   const OFFSCREEN = new Set();
 
+  const createHTMLElement =
+      tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+
   const Theme = {
     _initializing: null,
     async _init() {

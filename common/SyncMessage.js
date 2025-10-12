@@ -403,7 +403,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                 const version = parseInt(
                   (await browser.runtime.getBrowserInfo()).version
                 );
-                if (version < 126) bug1899786 = NOP;
+                if (version < 126 || version >= 136) bug1899786 = NOP;
               })();
             }
 

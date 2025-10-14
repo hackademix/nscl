@@ -538,6 +538,34 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
         subtree: true,
         attributeFilter: ["allow"],
       });
+
+      // Work-around for https://github.com/hackademix/noscript/issues/462
+      // which is actually a Gecko bug exposing the DOMDocElementInserted event
+      // to the content via window.event. Since properties are inaccessible,
+      // React code on proton.me throws while trying to read window.event.type.
+      // Here we intercept the accessor and return undefined, instead.
+      const ww = window.wrappedJSObject;
+      if (ww && typeof exportFunction == "function") {
+        const pd = Reflect.getOwnPropertyDescriptor(ww, "event");
+        if (pd) {
+          Reflect.defineProperty(ww, "event", {
+            get: exportFunction(function event() {
+              let res;
+              try {
+                res = pd.get.apply(this);
+                res?.isTrusted;
+                return res;
+              } catch (e) {
+                try {
+                  console.debug("Suppressing inaccessible window.event", res, e);
+                } catch (e) {
+                }
+              }
+              return;
+            }, window),
+          });
+        }
+      }
     }
 
     const docId = uuid();

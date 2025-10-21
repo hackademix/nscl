@@ -28,11 +28,13 @@
   function modifyWindow(scope, {port, xray}) {
     console.debug("WasmHook deleting WebAssembly", scope); // DEV_ONLY
     Reflect.deleteProperty(xray.unwrap(scope), "WebAssembly");
-    addEventListener("error", e => {
-      if (e.isTrusted && /Error.*WebAssembly/.test(e.message)) {
-        port.postMessage("notify");
-      }
-    }, true);
+    for (const event of ["error", "unhandledrejection"]) {
+      addEventListener(event, e => {
+        if (e.isTrusted && /\bWebAssembly\b/.test(`${e.message} ${e.reason?.message}`)) {
+          port.postMessage("notify");
+        }
+      }, true);
+    }
   }
 
   Worlds.connect("WasmHook.main", {

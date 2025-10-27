@@ -34,9 +34,6 @@ var PlaceHolder = (() => {
       try {
         theme = await Messages.send("getTheme");
         console.debug("getTheme returned", theme); // DEV_ONLY
-        for (let replacement of [...document.querySelectorAll(SELECTOR)]) {
-          this.update(replacement);
-        }
       } catch (e) {
         console.error(e);
       }
@@ -44,12 +41,18 @@ var PlaceHolder = (() => {
     },
     async update(replacement) {
       replacement?.classList.toggle("no-theme", true);
-      this._initializing ||= this._init();
+      if (!this._initializing) {
+        await (this._initializing = this._init());
+        for (const replacement of [...document.querySelectorAll(SELECTOR)]) {
+          this.update(replacement);
+        }
+      }
       if (replacement) {
-        for (const [className, toggle] of [...await this._initializing]) {
+        const theme = await this._initializing;
+        for (const [className, toggle] of [...theme]) {
           replacement.classList.toggle(className, toggle);
         }
-        replacement?.classList.toggle("no-theme", false);
+        replacement.classList.toggle("no-theme", false);
       }
     }
   };

@@ -37,9 +37,15 @@ ns.on("capabilities", event => {
       url: document.URL,
       documentUrl: document.URL,
       embeddingDocument: true,
+      offscreen: true,
     };
     seen.record({policyType: "wasm", request, allowed: false});
     notifyPage();
+    try {
+      PlaceHolder.create("wasm", request).replace();
+    } catch (e) {
+      error(e);
+    }
   }
 
   Worlds.connect("WasmHook", {

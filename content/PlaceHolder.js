@@ -201,12 +201,12 @@ var PlaceHolder = (() => {
       let {
         url
       } = this.request;
-      let objUrl = new URL(url)
+      const objUrl = new URL(url)
       this.origin = objUrl.origin;
       if (this.origin === "null") {
         this.origin = objUrl.protocol;
       }
-      let TYPE = `<${this.policyType.toUpperCase()}>`;
+      const TYPE = `<${this.policyType.toUpperCase()}>`;
 
       let replacement = createHTMLElement("a");
       replacement.className = CLASS_NAME;
@@ -232,7 +232,10 @@ var PlaceHolder = (() => {
       button.textContent = "×";
 
       let description = inner.appendChild(createHTMLElement("span"));
-      description.textContent = `${TYPE}@${this.origin}`;
+      description.textContent =
+        this.request?.offscreen
+        ? TYPE :
+        `${TYPE}@${objUrl.hostname || this.origin}`;
 
       replacement._placeHolderObj = this;
       replacement._placeHolderElement = element;

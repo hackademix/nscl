@@ -126,8 +126,11 @@ var PlaceHolder = (() => {
 
   function clickListener(ev) {
     if (ev.button === 0 && ev.isTrusted) {
+      // Quite convoluted way to ensure we associate clicks to placeholders,
+      // even if they're obstructed by other, possibly transparent, elements.
       let ph, replacement;
-      for (let e of document.elementsFromPoint(ev.clientX, ev.clientY)) {
+      const elements = document.elementsFromPoint(ev.clientX, ev.clientY);
+      for (const e of elements) {
         if (ph = e._placeHolderObj) {
           replacement = e;
           break;
@@ -140,7 +143,7 @@ var PlaceHolder = (() => {
       if (ph) {
         ev.preventDefault();
         ev.stopPropagation();
-        if (ev.target.value === "close") {
+        if (elements.some(e => e.value == "close")) {
           ph.close(replacement);
         } else {
           ph.enable(replacement);

@@ -153,8 +153,7 @@ var Policy = (() => {
     autoAllow(url, perms, force) {
       if (
         !(force || this.autoAllowTop) ||
-        perms == this.UNTRUSTED ||
-        perms == this.TRUSTED
+        perms != this.DEFAULT
       ) {
         return null;
       }

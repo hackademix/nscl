@@ -116,12 +116,22 @@ if ("MediaSource" in window) {
           let exposedMime = `${mime} (MSE)`;
           setTimeout(() => {
             try {
-              let allMedia = [...document.querySelectorAll("video,audio")];
-              let me = allMedia.find(e => e.srcObject === ms ||
-                urls && (urls.has(e.currentSrc) || urls.has(e.src))) ||
+              const allMedia = [...document.querySelectorAll("video,audio")];
+              let toBeReplaced = allMedia.filter(e => e.srcObject === ms ||
+                urls && (urls.has(e.currentSrc) || urls.has(e.src)));
+              if (!toBeReplaced.length) {
+                toBeReplaced =
                 // throwing may cause src not to be assigned at all:
-                allMedia.find(e => !(e.src || e.currentSrc || e.srcObject));
-              if (me) createPlaceholder(me, request);
+                allMedia.filter(e => !(e.src || e.currentSrc || e.srcObject));
+              }
+              if (!toBeReplaced.length) {
+                // x.com doesn't create media elements in advance, let's replace the containers
+                // see tor-browser#44278#note_3284323
+                toBeReplaced = document.querySelectorAll('div[data-testid="videoComponent"]');
+              }
+              for (const me of toBeReplaced) {
+                createPlaceholder(me, request);
+              }
             } catch (e) {
               error(e);
             }

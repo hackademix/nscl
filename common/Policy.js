@@ -219,8 +219,11 @@ var Policy = (() => {
       return JSON.stringify(this.dry(true));
     }
 
-    cascadeRestrictions(policyMatch, topUrl) {
+    cascade(policyMatch, topUrl,
+      what = { restrictions: true, permissions: false }) {
       let { contextMatch, perms } = policyMatch;
+
+      // do not let cascading override contextual policies
       if (contextMatch) {
         return perms;
       }
@@ -234,15 +237,27 @@ var Policy = (() => {
 
       let topPerms = this.get(topUrl, topUrl).perms;
       if (topPerms !== perms) {
-        let topCaps = topPerms.capabilities;
+        const topCaps = topPerms.capabilities;
+        let { capabilities } = perms;
+        if (what.permissions) {
+          capabilities = new Set(capabilities.concat([...topCaps]));
+        }
+        if (what.restrictions && perms != this.UNTRUSTED) {
+          capabilities = [...perms.capabilities].filter(c => topCaps.has(c));
+        }
         perms = new Permissions(
-          [...perms.capabilities].filter(c => topCaps.has(c)),
+          capabilities,
           perms.temp,
           perms.contextual
         );
       }
       return perms;
     }
+
+    cascadeRestrictions(policyMatch, topUrl) {
+      return this.cascade(policyMatch, topUrl);
+    }
+
 
     equals(other) {
       this.snapshot === other.snapshot;

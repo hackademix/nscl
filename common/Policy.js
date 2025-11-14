@@ -165,7 +165,7 @@ var Policy = (() => {
       return autoPerms;
     }
 
-    set(site, perms, cascade = false) {
+    set(site, perms, cascading = false) {
       let sites = this.sites;
       let { url, siteKey } = Sites.parse(site);
 
@@ -173,14 +173,14 @@ var Policy = (() => {
       let wideSiteKey = Sites.toggleSecureDomainKey(siteKey, false);
 
       if (perms === this.UNTRUSTED) {
-        cascade = true;
+        cascading = true;
         siteKey = wideSiteKey;
       } else {
         if (wideSiteKey !== siteKey) {
           sites.delete(wideSiteKey);
         }
       }
-      if (cascade && !url) {
+      if (cascading && !url) {
         for (let subMatch; (subMatch = sites.match(siteKey)); ) {
           sites.delete(subMatch);
         }
@@ -238,15 +238,15 @@ var Policy = (() => {
       let topPerms = this.get(topUrl, topUrl).perms;
       if (topPerms !== perms) {
         const topCaps = topPerms.capabilities;
-        let { capabilities } = perms;
-        if (what.permissions) {
-          capabilities = new Set(capabilities.concat([...topCaps]));
+        let capabilitiesArray = [...perms.capabilities];
+        if (what.permissions && perms == this.DEFAULT) {
+          capabilitiesArray = new Set(capabilitiesArray.concat([...topCaps]));
         }
-        if (what.restrictions && perms != this.UNTRUSTED) {
-          capabilities = [...perms.capabilities].filter(c => topCaps.has(c));
+        if (what.restrictions) {
+          capabilitiesArray = [capabilitiesArray].filter(c => topCaps.has(c));
         }
         perms = new Permissions(
-          capabilities,
+          capabilitiesArray,
           perms.temp,
           perms.contextual
         );

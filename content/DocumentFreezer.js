@@ -78,6 +78,10 @@ var DocumentFreezer = (() => {
           element.replaceWith(element = element.cloneNode(true));
         }
       }
+      if (element.localName.toLowerCase() == "script") {
+        element._frozenContent = element.textContent;
+        element.textContent = "";
+      }
       if (fa.length) element._frozenAttributes = fa;
       element._frozen = true;
     }
@@ -85,6 +89,9 @@ var DocumentFreezer = (() => {
 
   function unfreezeAttributes() {
     for (var element of document.getElementsByTagName("*")) {
+      if (element._frozenContent) {
+        element.textContent = element._frozenContent;
+      }
       if (!element._frozenAttributes) continue;
       for (let a of element._frozenAttributes) {
         element.setAttributeNS(a.namespaceURI, a.name, a.value);

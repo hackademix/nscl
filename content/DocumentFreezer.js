@@ -79,6 +79,7 @@ var DocumentFreezer = (() => {
         }
       }
       if (element.localName.toLowerCase() == "script") {
+        suppressedScripts++;
         element._frozenContent = element.textContent;
         element.textContent = "";
       }

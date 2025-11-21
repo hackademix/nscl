@@ -123,11 +123,15 @@ if ("MediaSource" in window) {
                 toBeReplaced =
                 // throwing may cause src not to be assigned at all:
                 allMedia.filter(e => !(e.src || e.currentSrc || e.srcObject));
-              }
-              if (!toBeReplaced.length) {
-                // x.com doesn't create media elements in advance, let's replace the containers
-                // see tor-browser#44278#note_3284323
-                toBeReplaced = document.querySelectorAll('div[data-testid="videoComponent"]');
+                if (!toBeReplaced.length) {
+                  // x.com doesn't create media elements in advance, let's replace the containers
+                  // see tor-browser#44278#note_3284323
+                  toBeReplaced = document.querySelectorAll('div[data-testid="videoComponent"]');
+                }
+                if (!toBeReplaced.length) {
+                  request.offscreen = true;
+                  createPlaceholder(null, request);
+                }
               }
               for (const me of toBeReplaced) {
                 createPlaceholder(me, request);

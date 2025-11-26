@@ -20,6 +20,8 @@
 
 "use strict";
 
+// Semantic version comparator, see see https://semver.org
+
 globalThis.Ver ??= class {
   constructor(version) {
     if (version instanceof Ver) {
@@ -27,7 +29,7 @@ globalThis.Ver ??= class {
       this.parts = version.parts;
     } else {
       this.versionString = version.toString();
-      this.parts = this.versionString.split(".");
+      this.parts = this.versionString.split("+")[0].split(".");
     }
   }
   toString() {

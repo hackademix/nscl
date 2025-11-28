@@ -284,9 +284,12 @@ var PlaceHolder = (() => {
         return;
       }
       try {
-        let element = replacement._placeHolderElement;
-        replacement.replaceWith(element.cloneNode(true));
+        const element = replacement._placeHolderElement.cloneNode(true);
+        replacement.replaceWith(element);
         this.replacements.delete(replacement);
+        if (element.play && !element.controls) {
+          element.play();
+        }
       } catch (e) {
         error(e, "While replacing");
       }

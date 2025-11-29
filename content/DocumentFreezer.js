@@ -88,13 +88,13 @@ var DocumentFreezer = (() => {
     }
   }
 
-  function unfreezeAttributes() {
-    for (var element of document.getElementsByTagName("*")) {
+  function unfreezeAttributes(root) {
+    for (var element of root.getElementsByTagName("*")) {
       if (element._frozenContent) {
         element.textContent = element._frozenContent;
       }
       if (!element._frozenAttributes) continue;
-      for (let a of element._frozenAttributes) {
+      for (const a of element._frozenAttributes) {
         element.setAttributeNS(a.namespaceURI, a.name, a.value);
       }
       if ("contentWindow" in element) {
@@ -135,19 +135,23 @@ var DocumentFreezer = (() => {
       addEventListener("beforescriptexecute", scriptSuppressor, true);
       return true;
     },
-    unfreeze() {
+    unfreeze(live = true) {
       if (!document._frozen) return false;
-      console.debug("Unfreezing", document.URL);
+      console.debug(`Unfreezing ${document.URL} ${live ? "live" : "off-document" }`);
       domFreezer.disconnect();
+      const root = document.documentElement;
       try {
-        unfreezeAttributes();
+        if (!live) {
+          root.remove();
+        }
+        unfreezeAttributes(root);
       } catch(e) {
         console.error(e);
       }
       removeEventListener("beforescriptexecute", scriptSuppressor, true);
       for (let et of lazy.eventTypes) document.removeEventListener(et, suppressEvents, true);
       document._frozen = false;
-      return true;
+      return root;
     },
     get suppressedScripts() { return suppressedScripts; },
     get firedDOMContentLoaded() { return firedDOMContentLoaded; },

@@ -235,18 +235,18 @@ var Policy = (() => {
         return ctxPerms;
       }
 
-      let topPerms = this.get(topUrl, topUrl).perms;
-      if (topPerms !== perms) {
+      const topPerms = this.get(topUrl, topUrl).perms;
+      if (!topPerms.sameAs(perms)) {
         const topCaps = topPerms.capabilities;
-        let capabilitiesArray = [...perms.capabilities];
+        let capsArray = [...perms.capabilities];
         if (what.permissions && perms == this.DEFAULT) {
-          capabilitiesArray = new Set(capabilitiesArray.concat([...topCaps]));
+          capsArray = new Set(capsArray.concat([...topCaps]));
         }
         if (what.restrictions) {
-          capabilitiesArray = [capabilitiesArray].filter(c => topCaps.has(c));
+          capsArray = capsArray.filter(c => topCaps.has(c));
         }
         perms = new Permissions(
-          capabilitiesArray,
+          capsArray,
           perms.temp,
           perms.contextual
         );

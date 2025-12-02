@@ -68,12 +68,18 @@ var Permissions = (() => {
       return enabled;
     }
     sameAs(otherPerms) {
-      let otherCaps = new Set(otherPerms.capabilities);
-      let theseCaps = this.capabilities;
-      for (let c of theseCaps) {
+      if (otherPerms == this) {
+        return true;
+      }
+      const theseCaps = this.capabilities;
+      if (this.capabilities.size != otherPerms.capabilities.size) {
+        return false;
+      }
+      const otherCaps = new Set(otherPerms.capabilities);
+      for (const c of theseCaps) {
         if (!otherCaps.delete(c)) return false;
       }
-      for (let c of otherCaps) {
+      for (const c of otherCaps) {
         if (!theseCaps.has(c)) return false;
       }
       return true;

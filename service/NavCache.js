@@ -18,12 +18,15 @@
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-var NavCache = (() => {
+"use strict";
 
-  let tabs = {};
-  let listeners = new Set();
+ globalThis.NavCache ||= (() => {
 
-  let clone = structuredClone || (o => JSON.parse(JSON.stringify(o)));
+   const tabs = {};
+   const listeners = new Set();
+
+   const clone = structuredClone || (o => JSON.parse(JSON.stringify(o)));
+
 
   const navListener = ({ tabId, frameId, url, parentFrameId }) => {
       let tab = tabs[tabId];
@@ -63,14 +66,15 @@ var NavCache = (() => {
   });
 
   async function populateFrames(tab) {
-    let tabId = tab.id;
-    let frames =  await browser.webNavigation.getAllFrames({tabId});
+    const tabId = tab.id;
+    if (tabId < 0) return;
+    const frames =  await browser.webNavigation.getAllFrames({tabId});
     if (!frames) return; // invalid tab
     const t = tabs[tabId] ||= {
       tabId,
       topUrls: new Set(),
     };
-    for ({frameId, url, parentFrameId} of frames) {
+    for (const {frameId, url, parentFrameId} of frames) {
       t[frameId] = {tabId, frameId, url, parentFrameId};
       if (parentFrameId == -1) t.topUrls.add(url);
     }

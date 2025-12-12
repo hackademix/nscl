@@ -160,6 +160,11 @@ var Sites = (() => {
         : s;
     }
 
+    static toLabel(site) {
+      const label = Sites.toExternal(site);
+      return label.includes(":") ? label : `…${label}`;
+    }
+
     set(k, v) {
       if (!k || Sites.isInternal(k) || k === "§:") return this;
       let [,domain] = DOMAIN_RX.exec(k);

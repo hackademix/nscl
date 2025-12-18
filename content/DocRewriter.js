@@ -33,7 +33,13 @@ var DocRewriter = (() => {
 
   return {
     rewrite(content) {
+      const isDTDHtml = document.doctype?.name == "html";
       pristine.open();
+      if (isDTDHtml) {
+        // Even if tempting, DO NOT turn write() into writeln() here,
+        // because it would just break the page leaving it blank.
+        pristine.write("<!DOCTYPE html>");
+      }
       pristine.write(content);
       pristine.close();
     }

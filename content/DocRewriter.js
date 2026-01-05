@@ -39,11 +39,15 @@ var DocRewriter = (() => {
         // Even if tempting, DO NOT turn write() into writeln() here,
         // because it would just break the page leaving it blank.
         const parts = [doctype.name];
+        const escape = s => s.replace(/"/g, "&quot;");
         if (doctype.publicId) {
-          parts.push(`PUBLIC "${doctype.publicId}"`);
+          parts.push(`PUBLIC "${escape(doctype.publicId)}"`);
         }
         if (doctype.systemId) {
-          parts.push(`"${doctype.systemId}"`)
+          if (!doctype.publicId) {
+            parts.push("SYSTEM");
+          }
+          parts.push(`"${escape(doctype.systemId)}"`)
         }
         pristine.write(`<!DOCTYPE ${parts.join(" ")}>`);
       }

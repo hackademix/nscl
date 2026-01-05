@@ -33,12 +33,19 @@ var DocRewriter = (() => {
 
   return {
     rewrite(content) {
-      const isDTDHtml = document.doctype?.name == "html";
+      const { doctype }  = document;
       pristine.open();
-      if (isDTDHtml) {
+      if (doctype?.name) {
         // Even if tempting, DO NOT turn write() into writeln() here,
         // because it would just break the page leaving it blank.
-        pristine.write("<!DOCTYPE html>");
+        const parts = [doctype.name];
+        if (doctype.publicId) {
+          parts.push(`PUBLIC "${doctype.publicId}"`);
+        }
+        if (doctype.systemId) {
+          parts.push(`"${doctype.systemId}"`)
+        }
+        pristine.write(`<!DOCTYPE ${parts.join(" ")}>`);
       }
       pristine.write(content);
       pristine.close();

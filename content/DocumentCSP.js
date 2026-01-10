@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -26,27 +26,17 @@ class DocumentCSP {
   }
 
   apply(capabilities, embedding = CSP.isEmbedType(this.document.contentType)) {
-    let {document} = this;
-    if (!capabilities.has("script")) {
-      // safety net for XML (especially SVG) documents and synchronous scripts running
-      // while inserting the CSP <meta> element.
-      document.defaultView.addEventListener("beforescriptexecute", e => {
-        if (!e.isTrusted) return;
-        e.preventDefault();
-        debug("Fallback beforexecutescript listener blocked ", e.target);
-      }, true);
-    }
-
-    let csp = this.builder;
-    let blocker = csp.buildFromCapabilities(capabilities, embedding);
+    const { document } = this;
+    const csp = this.builder;
+    const blocker = csp.buildFromCapabilities(capabilities, embedding);
     if (!blocker) return null;
 
     const createHTMLElement =
       tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
 
-    let header = csp.asHeader(blocker);
+    const header = csp.asHeader(blocker);
 
-    let meta = createHTMLElement("meta");
+    const meta = createHTMLElement("meta");
     meta.setAttribute("http-equiv", header.name);
     meta.setAttribute("content", header.value);
 
@@ -65,19 +55,18 @@ class DocumentCSP {
         document.replaceChild(htmlRoot, root);
       }
 
-      let {head} = document;
-      let parent = head ||
+      const { head } = document;
+      const parent = head ||
         document.documentElement.insertBefore(createHTMLElement("head"),
                             document.documentElement.firstElementChild);
 
 
       parent.insertBefore(meta, parent.firstElementChild);
-      debug(`Failsafe <meta> CSP inserted in %s: "%s"`, document.URL, header.value);
+      console.debug("Failsafe <meta> CSP inserted.", document.URL, header.value, document.documentElement.outerHTML);
       meta.remove();
       if (!head) parent.remove();
       if (document.documentElement !== root)
       {
-
         document.replaceChild(root, document.documentElement);
       }
     } catch (e) {

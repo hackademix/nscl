@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -19,9 +19,10 @@
  */
 
 'use strict'
-var DocumentFreezer = (() => {
+globalThis.DocumentFreezer = (() => {
 
-  const loaderAttributes = ["href", "src", "data"];
+  const loaderAttributes = ["data", "href", "src", "xlink"];
+  const scriptAttributes = ["language", "type"];
   const jsOrDataUrlRx = /^(?:data:(?:[^,;]*ml|unknown-content-type)|javascript:)/i;
 
 
@@ -56,11 +57,11 @@ var DocumentFreezer = (() => {
       if ("_frozen" in el) {
         continue;
       }
-      let content;
       const attributes = [];
       const loaders = [];
-      for (let a of el.attributes) {
-        let name = a.localName.toLowerCase();
+      const isScript = el.localName.toLowerCase() == "script";
+      for (const a of el.attributes) {
+        const name = a.localName.toLowerCase();
         if (loaderAttributes.includes(name)) {
           if (jsOrDataUrlRx.test(a.value)) {
             loaders.push(a);
@@ -70,6 +71,8 @@ var DocumentFreezer = (() => {
           attributes.push(a.cloneNode());
           a.value = "";
           el[name] = null;
+        } else if (isScript && scriptAttributes.includes(name)) {
+          attributes.push(a.cloneNode());
         }
       }
       if (loaders.length) {
@@ -81,14 +84,16 @@ var DocumentFreezer = (() => {
           el.replaceWith(el = el.cloneNode(true));
         }
       }
-      if (el.localName.toLowerCase() == "script") {
-        suppressedScripts++;
-        content = el.textContent;
-        el.textContent = "";
-      }
-      if ((el._frozen = (content || attributes.length)
-        ? { content, attributes }
+      if ((el._frozen = (isScript || attributes.length)
+        ? { attributes, isScript }
         : undefined)) {
+        if (isScript) {
+          suppressedScripts++;
+          const { nameSpaceURI } = el;
+          for (const name of scriptAttributes) {
+            el.setAttributeNS(nameSpaceURI, name, "disabled");
+          }
+        }
         document._frozenElements.add(el);
       }
     }
@@ -96,12 +101,15 @@ var DocumentFreezer = (() => {
 
   function unfreezeAttributes() {
     for (var el of document._frozenElements) {
-      if (el._frozen.content) {
-        el.textContent = el._frozen.content;
+      if (el._frozen.isScript) {
+        const { nameSpaceURI } = el;
+        for (const name of scriptAttributes) {
+          el.removeAttributeNS(nameSpaceURI, name);
+        }
       }
       if (el._frozen.attributes) {
         for (const a of el._frozen.attributes) {
-          el.setAttributeNS(a.namespaceURI, a.name, a.value);
+          el.setAttributeNodeNS(a);
         }
         if ("contentWindow" in el) {
           el.replaceWith(el.cloneNode(true));
@@ -111,11 +119,17 @@ var DocumentFreezer = (() => {
     }
   }
 
-  let domFreezer = new MutationObserver(records => {
-    console.debug("domFreezer on", document.documentElement.outerHTML); // DEV_ONLY
+  let firstCall = true;
+  const domFreezer = new MutationObserver(records => {
+    if (firstCall) {
+      freezeAttributes();
+      firstCall = false;
+    }
+    console.debug("domFreezer on", document.documentElement.outerHTML, records); // DEV_ONLY
     for (var r of records) {
       freezeAttributes([...r.addedNodes].filter(n => "outerHTML" in n));
     }
+    console.debug("domFreezer froze", document.documentElement.outerHTML, records); // DEV_ONLY
   });
 
   let suppressedScripts = 0;
@@ -125,7 +139,7 @@ var DocumentFreezer = (() => {
       if (document._frozenElements) {
         return false;
       }
-      console.debug("Freezing", document.URL);
+      console.debug("Freezing", document.URL, document.documentElement.outerHTML);
       document._frozenElements = new Set();
       for (let et of lazy.eventTypes) {
         document.addEventListener(et, suppressEvents, true);
@@ -144,13 +158,13 @@ var DocumentFreezer = (() => {
       if (!document._frozenElements) {
         return false;
       }
-      console.debug(`Unfreezing ${document.URL} ${live ? "live" : "off-document" }`);
       domFreezer.disconnect();
       const root = document.documentElement;
       try {
         if (!live) {
           root.remove();
         }
+        console.debug(`Unfreezing ${document.URL} ${live ? "live" : "off-document" }`, root.outerHTML);
         unfreezeAttributes();
       } catch(e) {
         console.error(e);

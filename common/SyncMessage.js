@@ -570,6 +570,10 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
 
     const docId = uuid();
     browser.runtime.sendSyncMessage = (msg) => {
+      if (window.origin == "null" && window.location.href == "about:blank" && window.top == self) {
+        throw new Error("Cannot use sync messaging from top-level about:blank!");
+      }
+
       let msgId = `${uuid()}:${docId}`;
       let url = msgUrl(msgId);
 

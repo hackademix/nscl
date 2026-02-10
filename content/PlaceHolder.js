@@ -23,6 +23,7 @@ var PlaceHolder = (() => {
   const CLASS_NAME = "__NoScript_PlaceHolder__ __NoScript_Theme__";
   const SELECTOR = `a.${CLASS_NAME.split(/\s+/).join('.')}`;
   const OFFSCREEN = new Set();
+  let offscreenContainer;
 
   const createHTMLElement =
       tagName => document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
@@ -187,11 +188,15 @@ var PlaceHolder = (() => {
         }
         // offscreen placeholder
         this.request.embeddingDocument = true;
-        const CLASS = "__NoScript_Offscreen_PlaceHolders__";
-        let offscreenContainer = document.querySelector(`.${CLASS}`);
         if (!offscreenContainer) {
           offscreenContainer = document.body.appendChild(createHTMLElement("div"));
-          offscreenContainer.className = CLASS;
+          offscreenContainer.className = "__NoScript_Offscreen_PlaceHolders__";
+          // ensure offscreen placeholders survive full-page error messages (see tor-browser#44625)
+          setInterval(() => {
+            if (!offscreenContainer.parentElement) {
+              document.body.appendChild(offscreenContainer);
+            }
+          }, 500);
         }
         if (!element) element = createHTMLElement("span");
         OFFSCREEN.add(this.policyType);

@@ -49,14 +49,20 @@
     };
   })();
 
-  function modifyWindow(w, {port, xray}) {
+  let parentPatch;
 
-    const {window} = xray;
-
+  const modifyContext = (w, { port, xray }) => {
+    if (!globalThis.Worker) {
+      console.debug("Workers not supported in this context, bailing out", w, globalThis);
+      return;
+    }
     // cache and "protect" some "sensitive" built-ins we'll need later
-    const { ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
-          Proxy, Promise } = window;
-    const { SharedWorker, encodeURIComponent } = w;
+    const {
+      encodeURIComponent,
+      ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
+      Proxy, Promise
+    } = globalThis;
+
 
     const error = console.error.bind(console);
 
@@ -65,7 +71,16 @@
     const apply = Reflect.apply.bind(Reflect);
 
     const patchRemoteWorkerScript = (url, isServiceOrShared) =>
-      port.postMessage({type: "patchUrl", url, isServiceOrShared});
+      port?.postMessage({
+        type: "patchUrl",
+        url,
+        isServiceOrShared,
+      });
+
+    port?.postMessage({
+        type: "propagate",
+        modifyContext: modifyContext.toString(),
+      });
 
     // patch Worker & SharedWorker
     const terminate = Worker.prototype.terminate;
@@ -97,26 +112,33 @@
             }
           };
 
-          let patch = port.postMessage({type: "getPatch"});
+          parentPatch ||= port?.postMessage({
+            type: "getPatch",
+          });
           // here we hide data URL modifications
-          patch = `{
+          const patch = `{
+            console.debug("Patching worker at " + self.location.href, typeof self.Worker); // DEV_ONLY
             let handler = {apply(target, thisArg, args) {
               return location === thisArg ? ${JSON.stringify(url)} : Reflect.apply(target, thisArg, args);
             }};
-            let wlProto = WorkerLocation.prototype;
-            let pd = Object.getOwnPropertyDescriptor(wlProto, "href");
+            const wlProto = WorkerLocation.prototype;
+            const pd = Object.getOwnPropertyDescriptor(wlProto, "href");
             pd.get = new Proxy(pd.get, handler);
             Object.defineProperty(wlProto, "href", pd);
             wlProto.toString = new Proxy(wlProto.toString, handler);
           }
-          ${patch}`;
+          ${parentPatch}`;
           args[0] = url.protocol === "data:" ?`data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
           : createObjectURL(new Blob([patch, ";\n", content()], {type: "application/javascript"}));
           return construct(target, args);
         }
         // remote patching
+        if (!w) {
+          // nested, handle in services/patchWorker.js
+          return construct(target, args);
+        }
         url = url.href;
-        patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === SharedWorker);
+        patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
         console.debug("Patching remote worker", url); // DEV_ONLY
         const worker = construct(target, args)
         failSafe.add(url, () => apply(terminate, worker, []));
@@ -125,14 +147,19 @@
     };
 
     // Intercept worker constructors
-    for (const clazz of ["Worker", "SharedWorker"]) {
-      xray.proxify(clazz, workerHandler);
+    if (!xray) {
+      // nested, just proxy Worker
+      globalThis.Worker = new Proxy(Worker, workerHandler);
+    } else {
+      for (const clazz of ["Worker", "SharedWorker"]) {
+        xray.proxify(clazz, workerHandler);
+      }
     }
 
     // Intercept service worker registration
-    const origin = window.location.origin;
-    if (ServiceWorkerContainer) {
-      const {unregister, update} = ServiceWorkerRegistration.prototype;
+    if (xray && ServiceWorkerContainer) {
+      const { origin }  = self.location;
+      const { unregister, update } = ServiceWorkerRegistration.prototype;
       xray.proxify("register", {
         apply(target, thisArg, args) {
           console.debug("Patching service worker", args); // DEV_ONLY
@@ -168,7 +195,7 @@
 
   Worlds.connect("patchWorkers.main", {
     onConnect(port) {
-      patchWindow(modifyWindow, {port});
+      patchWindow(modifyContext, { port });
     },
     onMessage(msg, {port}) {
       switch(msg.type) {

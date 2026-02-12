@@ -39,6 +39,17 @@
     }
   };
 
+  const INIT_EVENT = JSON.stringify(`workerPatch:${uuid()}`);
+  const wrapPatch = patch => `(() => {
+    if (!dispatchEvent(new CustomEvent(${INIT_EVENT}, { cancelable: true }))) {
+      console.debug("Worker already patched, not at the top level?", location.href); // DEV_ONLY
+      return;
+    }
+    addEventListener(${INIT_EVENT}, e => e.preventDefault(), true);
+    ${patch}
+  })();
+  `;
+
   browser.tabs.onRemoved.addListener(tab => {
     cleanup(tab.id);
   });
@@ -56,12 +67,18 @@
       if (tabId == -1) {
         documentUrl = new URL(documentUrl).origin;
       }
+      patch = wrapPatch(patch);
       let patchInfo = byOrigin.get(documentUrl);
-      if (!patchInfo) byOrigin.set(documentUrl, patchInfo = {patch, urls: new Set()});
+      if (!patchInfo) byOrigin.set(documentUrl, patchInfo = {
+        patch,
+        urls: new Set(),
+      });
       else {
         patchInfo.patch = patch;
       }
       patchInfo.urls.add(url);
+      // account for nested workers
+      byOrigin.set(url, patchInfo);
 
       return Promise.resolve(init(tab.id, url, patchInfo));
     } catch (e) {
@@ -74,7 +91,7 @@
     // Firefox, filter the source from the network
     init = () => {}; // attach the listener just once
     browser.webRequest.onBeforeRequest.addListener(request => {
-      let {tabId, url, documentUrl, requestId} = request;
+      let {tabId, url, documentUrl, originUrl, requestId} = request;
       console.debug("patchesByTab", patchesByTab, request); // DEV_ONLY REMOVEME
       let byOrigin = patchesByTab.get(tabId);
       if (!byOrigin) return;
@@ -82,12 +99,20 @@
         documentUrl = new URL(documentUrl).origin;
       }
       let patchInfo = byOrigin.get(documentUrl);
-      if (!(patchInfo?.urls.has(url))) return;
+      if (!patchInfo?.urls.has(url)) {
+        // account for nested workers
+        patchInfo = byOrigin.get(originUrl);
+        if (!patchInfo) {
+          return;
+        }
+        byOrigin.set(url, patchInfo);
+        patchInfo.urls.add(url);
+      }
 
       console.debug(`Patching ${tabId == -1 ? 'service' : ''}worker`, requestId, url, documentUrl); // DEV_ONLY REMOVEME
       let filter = browser.webRequest.filterResponseData(requestId);
       filter.onstart = () => {
-        console.debug("filter.onstart", requestId);  // DEV_ONLY REMOVEME
+        console.debug("filter.onstart", requestId, patchInfo.patch);  // DEV_ONLY REMOVEME
         filter.write(new TextEncoder().encode(patchInfo.patch));
       };
       filter.ondata = e => {

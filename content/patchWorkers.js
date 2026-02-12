@@ -23,6 +23,7 @@
 "use strict";
 globalThis.patchWorkers = (() => {
   const patches = new Set();
+  let propagator = "";
 
   let stringify = f => typeof f === "function" ? `(${f})();\n` : `{${f}}\n`;
 
@@ -43,11 +44,18 @@ globalThis.patchWorkers = (() => {
     const console = Object.fromEntries(Object.entries(self.console).map(([n, v]) => v.bind ? [n, v.bind(self.console)] : [n,v]));
 
     ${debugMonitor} // DEV_ONLY
+    const main = () => {
+      ${code}
+    };
+
+    ${propagator};
+
     try {
-      ${code};
+      main();
     } catch(e) {
       console.error("Error executing worker patch", e);
     }
+
     return true;
   })();
   `;
@@ -58,7 +66,14 @@ globalThis.patchWorkers = (() => {
     if (patches.size === 0) {
       Worlds.connect("patchWorkers", {
         onMessage(msg, {port}) {
-          switch(msg.type) {
+          switch (msg.type) {
+            case "propagate":
+              propagator = `
+                let parentPatch = main.toString();
+                const modifyContext = ${msg.modifyContext};
+                modifyContext(null, {});
+              `;
+              break;
             case "getPatch":
               return joinPatches();
             case "patchUrl":

@@ -62,5 +62,42 @@ ns.on("capabilities", event => {
     },
   });
 
-  debug(`WasmLHook installed on window ${document.URL}.`);
+  debug(`WasmHook installed on window ${document.URL}.`);
+
+  try {
+    const channelID = `wasmHook:${self.location.href}:${uuid()}`;
+    try {
+      const bc = new BroadcastChannel(channelID);
+      bc.onmessage = notify;
+    } catch (e) {
+      console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
+    }
+    const workersPatch = () => {
+      console.debug("Installing WasmHook", self); // DEV_ONLY
+
+      console.debug("WasmHook deleting WebAssembly", self); // DEV_ONLY
+      Reflect.deleteProperty(self, "WebAssembly");
+
+      for (const event of ["error", "unhandledrejection", "rejectionhandled"]) {
+        addEventListener(event, e => {
+
+          console.error(e, "Error handler", e.reason, e.message, e.reason?.message, e.isTrusted);
+          if (e.isTrusted && /\bWebAssembly\b/.test(`${e.message} ${e.reason?.message}`)) {
+            try {
+              const bc = new BroadcastChannel(channelID);
+              bc.postMessage({});
+              bc.close();
+              console.log("Used BroadcastChannel", channelID);
+            } catch (e) {
+              console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
+            }
+          }
+        }, true);
+      }
+    };
+    patchWorkers(`(${workersPatch})()`.replace(/\bchannelID\b/g, JSON.stringify(channelID)));
+    debug(`WasmHook ready for workers spawned by ${document.URL}.`); // DEV_ONLY
+  } catch(e) {
+    error(e);
+  }
 });

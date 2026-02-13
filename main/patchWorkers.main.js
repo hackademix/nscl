@@ -22,7 +22,7 @@
 
 "use strict";
 {
-  const {console, patchWindow} = Worlds.main;
+  const { console, patchWindow, exportFunction } = Worlds.main;
 
   const failSafe = (() => {
     const urls = new Map();
@@ -56,6 +56,7 @@
       console.debug("Workers not supported in this context, bailing out", w, globalThis);
       return;
     }
+    console.debug("patchWorker.modifyContext()", globalThis, globalThis.location?.href, globalThis.TOO_LATE ? "TOO LATE!" : "OK"); // DEV_ONLY
     // cache and "protect" some "sensitive" built-ins we'll need later
     const {
       encodeURIComponent,
@@ -92,6 +93,7 @@
     };
 
     const handlePatch = (createPatched, target, args) => {
+      const isWorker = createPatched == constructWorker;
       // string coercion may have side effects, let's clear it up immediately
       args[0] = `${args[0]}`;
       let url;
@@ -102,7 +104,7 @@
         return createPatched(target, args);
       }
 
-      if (/^(?:data|blob):/.test(url.protocol)) {
+      if (/^(?:data|blob):/.test(url.protocol) || !isWorker) {
 
         // Inline patching
 
@@ -133,10 +135,10 @@
             `;
         }
 
-        const preamble = (createPatched == constructWorker) ?
+        const preamble = isWorker ?
           // here we hide URL modifications
           `
-            console.debug("Patching worker", globalThis, globalThis.location); // DEV_ONLY
+            console.debug("Patching worker", globalThis, globalThis.location?.href); // DEV_ONLY
             const handler = {
               apply(target, thisArg, args) {
                 return location === thisArg ? ${JSON.stringify(url)} : Reflect.apply(target, thisArg, args);
@@ -168,9 +170,10 @@
         return createPatched(target, args);
       }
       url = url.href;
-      patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
-      console.debug("Patching remote worker", url); // DEV_ONLY
-      const worker = createPatched(target, args)
+      const patching = patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
+      const isWorklet = createPatched != constructWorker;
+      console.debug(`Patching remote ${isWorklet ? "worklet" : "worker"} worker`, url); // DEV_ONLY
+      const worker = createPatched(isWorklet ? patching : target, args)
       if (worker instanceof Worker) { // could also be a worklet
         failSafe?.add(url, () => apply(terminate, worker, []));
       }
@@ -190,7 +193,9 @@
         const { addModule } = prototype;
         exportFunction(function(...args) {
           return handlePatch(
-            (target, args) => {
+            async (target, args) => {
+              console.debug("Worklet creation", target, this, args); // DEV_ONLY
+              await target;
               addModule.apply(this, args);
             },
             this,

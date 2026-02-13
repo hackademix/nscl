@@ -101,7 +101,7 @@ ns.on("capabilities", event => {
       if (!globalThis.OffscreenCanvas) {
         return;
       }
-      console.debug("Installing WebGLHook", globalThis, globalThis.location); // DEV_ONLY
+      console.debug("Installing WebGLHook", globalThis, globalThis.location?.href); // DEV_ONLY
       const getContext = OffscreenCanvas.prototype.getContext;
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {

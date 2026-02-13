@@ -36,6 +36,7 @@ globalThis.patchWorkers = (() => {
   const wrap = code => `{
     let parentPatch = () => {
       if (!(globalThis.WorkerGlobalScope || globalThis.WorkletGlobalScope)) {
+        console.debug("Excluding from worker/worklet patching", globalThis); // DEV_ONLY
         return false;
       }
       // preserve console from rewriting / erasure

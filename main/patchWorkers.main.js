@@ -84,13 +84,14 @@
 
     // patch Worker & SharedWorker
     const terminate = Worker.prototype.terminate;
+    const baseURI = globalThis.document?.baseURI || location.href;
     const workerHandler = {
       construct(target, args) {
         // string coercion may have side effects, let's clear it up immediately
         args[0] = `${args[0]}`;
         let url;
         try {
-          url = new URL(args[0], document.baseURI);
+          url = new URL(args[0], baseURI);
         } catch (e) {
           args[0] = "data:"; // Worker constructor doesn't care about URL validity
           return construct(target, args);
@@ -115,6 +116,14 @@
           parentPatch ||= port?.postMessage({
             type: "getPatch",
           });
+          if (typeof parentPatch == "function") {
+            parentPatch = `
+              const parentPatch = ${parentPatch};
+              const modifyContext = ${modifyContext};
+              modifyContext(null, {});
+              parentPatch();
+            `;
+          }
           // here we hide data URL modifications
           const patch = `{
             console.debug("Patching worker at " + self.location.href, typeof self.Worker); // DEV_ONLY
@@ -126,8 +135,11 @@
             pd.get = new Proxy(pd.get, handler);
             Object.defineProperty(wlProto, "href", pd);
             wlProto.toString = new Proxy(wlProto.toString, handler);
-          }
-          ${parentPatch}`;
+          };
+          {
+            ${parentPatch}
+          };
+          `;
           args[0] = url.protocol === "data:" ?`data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
           : createObjectURL(new Blob([patch, ";\n", content()], {type: "application/javascript"}));
           return construct(target, args);
@@ -174,7 +186,7 @@
           }
           let url;
           try {
-            url = new URL(args[0], document.baseURI);
+            url = new URL(args[0], baseURI);
             if (url.origin !== origin) throw new Error("ServiceWorker origin mismatch (${url})");
             url = url.href;
             patchRemoteWorkerScript(url, /* isServiceOrShared */ true);

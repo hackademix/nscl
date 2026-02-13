@@ -73,10 +73,10 @@ ns.on("capabilities", event => {
       console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
     }
     const workersPatch = () => {
-      console.debug("Installing WasmHook", self); // DEV_ONLY
+      console.debug("Installing WasmHook", self, location.href); // DEV_ONLY
 
-      console.debug("WasmHook deleting WebAssembly", self); // DEV_ONLY
       Reflect.deleteProperty(self, "WebAssembly");
+      console.debug("WasmHook deleted WebAssembly", self, self.WebAssembly, location.href); // DEV_ONLY
 
       for (const event of ["error", "unhandledrejection", "rejectionhandled"]) {
         addEventListener(event, e => {

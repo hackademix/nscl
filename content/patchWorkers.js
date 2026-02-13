@@ -33,32 +33,26 @@ globalThis.patchWorkers = (() => {
         console.debug("%s Event in patched worker", ev.type, ev.data);
       }, true);
     }`;
-  const wrap = code => `(() => {
-    try {
-      if (!(self instanceof WorkerGlobalScope)) return false;
-    } catch(e) {
-      return false;
-    }
-
-    // preserve console from rewriting / erasure
-    const console = Object.fromEntries(Object.entries(self.console).map(([n, v]) => v.bind ? [n, v.bind(self.console)] : [n,v]));
-
-    ${debugMonitor} // DEV_ONLY
-    const main = () => {
-      ${code}
+  const wrap = code => `{
+    let parentPatch = () => {
+      try {
+        if (!(self instanceof WorkerGlobalScope)) return false;
+      } catch(e) {
+        return false;
+      }
+      // preserve console from rewriting / erasure
+      const console = Object.fromEntries(Object.entries(self.console).map(([n, v]) => v.bind ? [n, v.bind(self.console)] : [n,v]));
+      ${debugMonitor} // DEV_ONLY
+      try {
+        ${code}
+      } catch(e) {
+        console.error("Error executing worker patch", e);
+      }
     };
-
-    ${propagator};
-
-    try {
-      main();
-    } catch(e) {
-      console.error("Error executing worker patch", e);
-    }
-
-    return true;
-  })();
-  `;
+    ${propagator}
+    parentPatch();
+  };`
+  ;
   const joinPatches = () => wrap([...patches].join("\n"));
 
   return patch => {
@@ -68,8 +62,8 @@ globalThis.patchWorkers = (() => {
         onMessage(msg, {port}) {
           switch (msg.type) {
             case "propagate":
+              // This is almost duplicated in patchWorker.main.js / modifyContext itself
               propagator = `
-                let parentPatch = main.toString();
                 const modifyContext = ${msg.modifyContext};
                 modifyContext(null, {});
               `;

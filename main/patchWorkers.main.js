@@ -133,20 +133,23 @@
             `;
         }
 
-        const preamble = createPatched == constructWorker ?
+        const preamble = (createPatched == constructWorker) ?
           // here we hide URL modifications
-          `console.debug("Patching worker/", globalThis, globalThis.location); // DEV_ONLY
-            {
-              const handler = {apply(target, thisArg, args) {
+          `
+            console.debug("Patching worker", globalThis, globalThis.location); // DEV_ONLY
+            const handler = {
+              apply(target, thisArg, args) {
                 return location === thisArg ? ${JSON.stringify(url)} : Reflect.apply(target, thisArg, args);
-              }};
-              const wlProto = WorkerLocation.prototype;
-              const pd = Object.getOwnPropertyDescriptor(wlProto, "href");
-              pd.get = new Proxy(pd.get, handler);
-              Object.defineProperty(wlProto, "href", pd);
-              wlProto.toString = new Proxy(wlProto.toString, handler);
+              }
             };
-          ` : `console.debug("Patching worklet", globalThis); // DEV_ONLY`;
+            const wlProto = WorkerLocation.prototype;
+            const pd = Object.getOwnPropertyDescriptor(wlProto, "href");
+            pd.get = new Proxy(pd.get, handler);
+            Object.defineProperty(wlProto, "href", pd);
+            wlProto.toString = new Proxy(wlProto.toString, handler);
+          ` : `
+            console.debug("Patching worklet", globalThis); // DEV_ONLY
+          `;
         patch = `
           {
             ${preamble}

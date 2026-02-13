@@ -67,7 +67,7 @@
     const error = console.error.bind(console);
 
     const createObjectURL = URL.createObjectURL.bind(URL);
-    const construct = Reflect.construct.bind(Reflect);
+    const constructWorker = Reflect.construct.bind(Reflect);
     const apply = Reflect.apply.bind(Reflect);
 
     const patchRemoteWorkerScript = (url, isServiceOrShared) =>
@@ -87,75 +87,91 @@
     const baseURI = globalThis.document?.baseURI || location.href;
     const workerHandler = {
       construct(target, args) {
-        // string coercion may have side effects, let's clear it up immediately
-        args[0] = `${args[0]}`;
-        let url;
-        try {
-          url = new URL(args[0], baseURI);
-        } catch (e) {
-          args[0] = "data:"; // Worker constructor doesn't care about URL validity
-          return construct(target, args);
-        }
+        return handlePatch(constructWorker, target, args);
+      }
+    };
 
-        if (/^(?:data|blob):/.test(url.protocol)) {
+    const handlePatch = (createPatched, target, args) => {
+      // string coercion may have side effects, let's clear it up immediately
+      args[0] = `${args[0]}`;
+      let url;
+      try {
+        url = new URL(args[0], baseURI);
+      } catch (e) {
+        args[0] = "data:"; // Worker constructor doesn't care about URL validity
+        return createPatched(target, args);
+      }
 
-          // Inline patching
+      if (/^(?:data|blob):/.test(url.protocol)) {
 
-          let content = () => {
-            try {
-              let xhr = new XMLHttpRequest();
-              xhr.open("GET", url, false);
-              xhr.send(null);
-              return xhr.responseText;
-            } catch (e) {
-              error(e);
-              return "";
-            }
-          };
+        // Inline patching
 
-          parentPatch ||= port?.postMessage({
+        let content = () => {
+          try {
+            let xhr = new XMLHttpRequest();
+            xhr.open("GET", url, false);
+            xhr.send(null);
+            return xhr.responseText;
+          } catch (e) {
+            error(e);
+            return "";
+          }
+        };
+
+        let patch = parentPatch ||
+          port?.postMessage({
             type: "getPatch",
           });
-          if (typeof parentPatch == "function") {
-            parentPatch = `
-              const parentPatch = ${parentPatch};
+        if (typeof patch == "function") {
+          patch = `
+            const parentPatch = ${patch};
+            {
               const modifyContext = ${modifyContext};
               modifyContext(null, {});
-              parentPatch();
+            }
+            parentPatch();
             `;
-          }
-          // here we hide data URL modifications
-          const patch = `{
-            console.debug("Patching worker at " + self.location.href, typeof self.Worker); // DEV_ONLY
-            let handler = {apply(target, thisArg, args) {
-              return location === thisArg ? ${JSON.stringify(url)} : Reflect.apply(target, thisArg, args);
-            }};
-            const wlProto = WorkerLocation.prototype;
-            const pd = Object.getOwnPropertyDescriptor(wlProto, "href");
-            pd.get = new Proxy(pd.get, handler);
-            Object.defineProperty(wlProto, "href", pd);
-            wlProto.toString = new Proxy(wlProto.toString, handler);
-          };
+        }
+
+        const preamble = createPatched == constructWorker ?
+          // here we hide URL modifications
+          `console.debug("Patching worker/", globalThis, globalThis.location); // DEV_ONLY
+            {
+              const handler = {apply(target, thisArg, args) {
+                return location === thisArg ? ${JSON.stringify(url)} : Reflect.apply(target, thisArg, args);
+              }};
+              const wlProto = WorkerLocation.prototype;
+              const pd = Object.getOwnPropertyDescriptor(wlProto, "href");
+              pd.get = new Proxy(pd.get, handler);
+              Object.defineProperty(wlProto, "href", pd);
+              wlProto.toString = new Proxy(wlProto.toString, handler);
+            };
+          ` : `console.debug("Patching worklet", globalThis); // DEV_ONLY`;
+        patch = `
           {
-            ${parentPatch}
-          };
-          `;
-          args[0] = url.protocol === "data:" ?`data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
-          : createObjectURL(new Blob([patch, ";\n", content()], {type: "application/javascript"}));
-          return construct(target, args);
-        }
-        // remote patching
-        if (!w) {
-          // nested, handle in services/patchWorker.js
-          return construct(target, args);
-        }
-        url = url.href;
-        patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
-        console.debug("Patching remote worker", url); // DEV_ONLY
-        const worker = construct(target, args)
-        failSafe.add(url, () => apply(terminate, worker, []));
-        return worker;
+            ${preamble}
+          }
+          {
+            ${patch}
+          }
+          `.replace(/^\s+/mg, '');
+        args[0] = url.protocol === "data:" ? `data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
+          : createObjectURL(new Blob([patch, ";\n", content()], { type: "application/javascript" }));
+        return createPatched(target, args);
       }
+      // remote patching
+      if (!w) {
+        // nested, handle in services/patchWorker.js
+        return createPatched(target, args);
+      }
+      url = url.href;
+      patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
+      console.debug("Patching remote worker", url); // DEV_ONLY
+      const worker = createPatched(target, args)
+      if (worker instanceof Worker) { // could also be a worklet
+        failSafe?.add(url, () => apply(terminate, worker, []));
+      }
+      return worker;
     };
 
     // Intercept worker constructors
@@ -166,11 +182,24 @@
       for (const clazz of ["Worker", "SharedWorker"]) {
         xray.proxify(clazz, workerHandler);
       }
+      if (globalThis.Worklet) {
+        const { prototype } = globalThis.Worklet;
+        const { addModule } = prototype;
+        exportFunction(function(...args) {
+          return handlePatch(
+            (target, args) => {
+              addModule.apply(this, args);
+            },
+            this,
+            args
+          );
+        }, prototype, {defineAs: "addModule"});
+      }
     }
 
     // Intercept service worker registration
     if (xray && ServiceWorkerContainer) {
-      const { origin }  = self.location;
+      const { origin }  = globalThis.location;
       const { unregister, update } = ServiceWorkerRegistration.prototype;
       xray.proxify("register", {
         apply(target, thisArg, args) {
@@ -194,14 +223,15 @@
             error(e);
           }
           const registration = apply(target, thisArg, args);
-          failSafe.add(url, () => {
+          failSafe?.add(url, () => {
             registration.then(r => apply(unregister, r, []));
           });
           registration.then(r => apply(update, r, []));
           return registration;
         }
       }, ServiceWorkerContainer.prototype);
-    }
+    };
+
     console.debug("Workers patched on", location.href); // DEV_ONLY
   }
 

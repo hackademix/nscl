@@ -28,7 +28,7 @@
   function modifyWindow(scope, {port, xray}) {
     console.debug("WasmHook deleting WebAssembly", scope); // DEV_ONLY
     Reflect.deleteProperty(xray.unwrap(scope), "WebAssembly");
-    for (const event of ["error", "unhandledrejection"]) {
+    for (const event of ["error", "unhandledrejection", "rejectionhandled"]) {
       addEventListener(event, e => {
         if (e.isTrusted && /\bWebAssembly\b/.test(`${e.message} ${e.reason?.message}`)) {
           port.postMessage("notify");

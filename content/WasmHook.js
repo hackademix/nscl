@@ -65,7 +65,7 @@ ns.on("capabilities", event => {
   debug(`WasmHook installed on window ${document.URL}.`);
 
   try {
-    const channelID = `wasmHook:${self.location.href}:${uuid()}`;
+    const channelID = `wasmHook:${globalThis.location?.href}:${uuid()}`;
     try {
       const bc = new BroadcastChannel(channelID);
       bc.onmessage = notify;
@@ -73,10 +73,15 @@ ns.on("capabilities", event => {
       console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
     }
     const workersPatch = () => {
-      console.debug("Installing WasmHook", self, location.href); // DEV_ONLY
+      console.debug("Installing WasmHook", globalThis, globalThis.location); // DEV_ONLY
 
-      Reflect.deleteProperty(self, "WebAssembly");
-      console.debug("WasmHook deleted WebAssembly", self, self.WebAssembly, location.href); // DEV_ONLY
+      Reflect.deleteProperty(globalThis, "WebAssembly");
+      console.debug("WasmHook deleted WebAssembly", globalThis, globalThis.WebAssembly, globalThis.location); // DEV_ONLY
+
+      if (!globalThis.addEventListener) {
+        // Worklet, no way to monitor, bailout
+        return;
+      }
 
       for (const event of ["error", "unhandledrejection", "rejectionhandled"]) {
         addEventListener(event, e => {

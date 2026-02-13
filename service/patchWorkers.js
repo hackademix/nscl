@@ -41,11 +41,13 @@
 
   const INIT_EVENT = JSON.stringify(`workerPatch:${uuid()}`);
   const wrapPatch = patch => `(() => {
-    if (!dispatchEvent(new CustomEvent(${INIT_EVENT}, { cancelable: true }))) {
-      console.debug("Worker already patched, not at the top level?", location.href); // DEV_ONLY
-      return;
+    if (globalThis.dispatchEvent) {
+      if (!dispatchEvent(new CustomEvent(${INIT_EVENT}, { cancelable: true }))) {
+        console.debug("Worker already patched, not at the top level?", location.href); // DEV_ONLY
+        return;
+      }
+      addEventListener(${INIT_EVENT}, e => e.preventDefault(), true);
     }
-    addEventListener(${INIT_EVENT}, e => e.preventDefault(), true);
     ${patch}
   })();
   `;
@@ -196,7 +198,8 @@
 
     // see https://chromedevtools.github.io/devtools-protocol/tot/Target/#type-TargetFilter
     // and https://source.chromium.org/chromium/chromium/src/+/main:content/browser/devtools/devtools_agent_host_impl.cc?ss=chromium&q=f:devtools%20-f:out%20%22::kTypeTab%5B%5D%22
-    const targetFilter = ["worker", "shared_worker", "service_worker"].map(type => ({type, exclude: false}));
+    const targetFilter = ["worker", "shared_worker", "service_worker", "worklet"]
+          .map(type => ({ type, exclude: false }));
 
     return await (init = async (tabId, url, {patch}) => {
 

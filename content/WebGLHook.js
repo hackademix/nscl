@@ -90,7 +90,7 @@ ns.on("capabilities", event => {
   }
 
   try {
-    const channelID = `webglHook:${self.location.href}:${uuid()}`;
+    const channelID = `webglHook:${globalThis.location?.href}:${uuid()}`;
     try {
       const bc = new BroadcastChannel(channelID);
       bc.onmessage = notifyWebGL;
@@ -98,7 +98,10 @@ ns.on("capabilities", event => {
       console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
     }
     const workersPatch = () => {
-      console.debug("Installing WebGLHook", self); // DEV_ONLY
+      if (!globalThis.OffscreenCanvas) {
+        return;
+      }
+      console.debug("Installing WebGLHook", globalThis, globalThis.location); // DEV_ONLY
       const getContext = OffscreenCanvas.prototype.getContext;
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {

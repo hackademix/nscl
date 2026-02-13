@@ -28,25 +28,23 @@ globalThis.patchWorkers = (() => {
   let stringify = f => typeof f === "function" ? `(${f})();\n` : `{${f}}\n`;
 
   const debugMonitor = `
-    for (let et of ['message', 'error', 'messageerror']) {
+    if (globalThis.addEventListener) for (const et of ['message', 'error', 'messageerror']) {
       addEventListener(et, ev => {
-        console.debug("%s Event in patched worker", ev.type, ev.data);
+        console.debug("Event in patched worker/worklet", globalThis, ev.type, ev.data);
       }, true);
     }`;
   const wrap = code => `{
     let parentPatch = () => {
-      try {
-        if (!(self instanceof WorkerGlobalScope)) return false;
-      } catch(e) {
+      if (!(globalThis.WorkerGlobalScope || globalThis.WorkletGlobalScope)) {
         return false;
       }
       // preserve console from rewriting / erasure
-      const console = Object.fromEntries(Object.entries(self.console).map(([n, v]) => v.bind ? [n, v.bind(self.console)] : [n,v]));
+      const console = Object.fromEntries(Object.entries(globalThis.console).map(([n, v]) => v.bind ? [n, v.bind(globalThis.console)] : [n,v]));
       ${debugMonitor} // DEV_ONLY
       try {
         ${code}
       } catch(e) {
-        console.error("Error executing worker patch", e);
+        console.error("Error executing worker/worklet patch", e);
       }
     };
     ${propagator}

@@ -87,7 +87,7 @@
       const {url, patch, isServiceOrShared} = __patchWorkers__;
       const tabId = isServiceOrShared && !chrome.debugger ? -1 : tab.id;
 
-      updatePatch(patch, tabId, documentUrl, url);
+      const patchInfo = updatePatch(patch, tabId, documentUrl, url);
 
       return Promise.resolve(init(tab.id, url, patchInfo));
     } catch (e) {

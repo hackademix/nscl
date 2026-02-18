@@ -49,7 +49,7 @@ class DocumentCSP {
         // non-HTML XML documents ignore <meta> CSP unless wrapped in
         // - <html><head></head></head> on Gecko
         // - just <head></head> on Chromium
-        console.debug("XML Document: temporary replacing %o with <HTML>", root);
+        debug("XML Document: temporary replacing %o with <HTML>", root); // DEV_ONLY
         let htmlDoc = document.implementation.createHTMLDocument();
         let htmlRoot = document.importNode(htmlDoc.documentElement, true);
         document.replaceChild(htmlRoot, root);
@@ -62,7 +62,7 @@ class DocumentCSP {
 
 
       parent.insertBefore(meta, parent.firstElementChild);
-      console.debug("Failsafe <meta> CSP inserted.", document.URL, header.value, document.documentElement.outerHTML);
+      debug("Failsafe <meta> CSP inserted.", document.URL, header.value, document.documentElement.outerHTML); // DEV_ONLY
       meta.remove();
       if (!head) parent.remove();
       if (document.documentElement !== root)

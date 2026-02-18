@@ -59,59 +59,99 @@
     if (frameId === 0) cleanup(tabId);
   });
 
-  browser.runtime.onMessage.addListener(({__patchWorkers__}, {tab, url: documentUrl}) => {
+  const updatePatch = (patch, tabId, documentUrl, url) => {
+    let byOrigin = patchesByTab.get(tabId);
+    if (!byOrigin) patchesByTab.set(tabId, byOrigin = new Map());
+    if (tabId == -1) {
+      documentUrl = new URL(documentUrl).origin;
+    }
+    patch = wrapPatch(patch);
+    let patchInfo = byOrigin.get(documentUrl);
+    if (!patchInfo) byOrigin.set(documentUrl, patchInfo = {
+      patch,
+      urls: new Set(),
+    });
+    else {
+      patchInfo.patch = patch;
+    }
+    patchInfo.urls.add(url);
+    // account for nested workers
+    byOrigin.set(url, patchInfo);
+    return patchInfo;
+  }
+
+
+  const workerCreationListener = ({__patchWorkers__}, {tab, url: documentUrl}) => {
     if (!__patchWorkers__) return;
     try {
-      let {url, patch, isServiceOrShared} = __patchWorkers__;
-      let tabId = isServiceOrShared && !chrome.debugger ? -1 : tab.id;
-      let byOrigin = patchesByTab.get(tabId);
-      if (!byOrigin) patchesByTab.set(tabId, byOrigin = new Map());
-      if (tabId == -1) {
-        documentUrl = new URL(documentUrl).origin;
-      }
-      patch = wrapPatch(patch);
-      let patchInfo = byOrigin.get(documentUrl);
-      if (!patchInfo) byOrigin.set(documentUrl, patchInfo = {
-        patch,
-        urls: new Set(),
-      });
-      else {
-        patchInfo.patch = patch;
-      }
-      patchInfo.urls.add(url);
-      // account for nested workers
-      byOrigin.set(url, patchInfo);
+      const {url, patch, isServiceOrShared} = __patchWorkers__;
+      const tabId = isServiceOrShared && !chrome.debugger ? -1 : tab.id;
+
+      updatePatch(patch, tabId, documentUrl, url);
 
       return Promise.resolve(init(tab.id, url, patchInfo));
     } catch (e) {
       console.error("Error on __patchWorkers__ message", e);
       return Promise.reject(e);
     }
-  });
+  };
 
-  let init = browser.webRequest.filterResponseData ? () => {
-    // Firefox, filter the source from the network
-    init = () => {}; // attach the listener just once
-    browser.webRequest.onBeforeRequest.addListener(request => {
-      let {tabId, url, documentUrl, originUrl, requestId} = request;
+  browser.runtime.onMessage.addListener(workerCreationListener);
+
+  let init = browser.webRequest.filterResponseData ? (() => {
+    // Firefox
+
+    // Filter the worker script sources from the network
+    browser.webRequest.onBeforeSendHeaders.addListener(async request => {
+      const { requestHeaders } = request;
       console.debug("patchesByTab", patchesByTab, request); // DEV_ONLY REMOVEME
-      let byOrigin = patchesByTab.get(tabId);
-      if (!byOrigin) return;
+
+      let type;
+      for (const { name, value } of requestHeaders) {
+        if (name == "Sec-Fetch-Dest") {
+          if (!/work(er|let)/.test(value)) {
+            return;
+          }
+          type = value;
+          break;
+        }
+      }
+      if (!type) {
+        return;
+      }
+
+      const { tabId, frameId, url, documentUrl, originUrl, requestId  } = request;
+      const byOrigin = patchesByTab.get(tabId);
       if (tabId == -1) {
         documentUrl = new URL(documentUrl).origin;
       }
-      let patchInfo = byOrigin.get(documentUrl);
+
+      let patchInfo = byOrigin?.get(documentUrl);
       if (!patchInfo?.urls.has(url)) {
         // account for nested workers
         patchInfo = byOrigin.get(originUrl);
         if (!patchInfo) {
-          return;
+          if (tabId == -1) {
+            return;
+          }
+          try {
+            const patch = await browser.tabs.sendMessage(tabId,
+              { __getWorkerPatch__: { url } },
+              { frameId }
+            );
+            if (!patch) {
+              return;
+            }
+          } catch(e) {
+            return;
+          }
+          patchInfo = updatePatch(patch, tabId, documentUrl, url);
         }
         byOrigin.set(url, patchInfo);
         patchInfo.urls.add(url);
       }
 
-      console.debug(`Patching ${tabId == -1 ? 'service' : ''}worker`, requestId, url, documentUrl); // DEV_ONLY REMOVEME
+      console.debug(`Patching ${type}`, requestId, url, documentUrl); // DEV_ONLY REMOVEME
       let filter = browser.webRequest.filterResponseData(requestId);
       filter.onstart = () => {
         console.debug("filter.onstart", requestId, patchInfo.patch);  // DEV_ONLY REMOVEME
@@ -126,12 +166,16 @@
     }, {
       urls: ["<all_urls>"],
       types: ["script"],
-    }, ["blocking"]);
-  } : async (...args) => {
+    }, ["blocking", "requestHeaders"]);
 
-    // Section 1, run once
+    // attach the listener above just once per session
+    return () => { };
+  })() : async (...args) => {
+    // Chromium
 
-    // Chromium, use debugger breakpoints
+    // Section 1, run once per tab
+
+    // Use debugger breakpoints
     if (!chrome.debugger) {
       throw new Error("patchWorker.js - no debugger API: missing permission?");
     }

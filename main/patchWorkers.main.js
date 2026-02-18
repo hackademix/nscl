@@ -26,25 +26,29 @@
 
   const failSafe = (() => {
     const urls = new Map();
-    const getCallbacks = url => {
-      let ret = urls.get(url);
-      if (!ret) {
-        urls.set(ret = new Set());
+    const getResolver = url => {
+      let resolver = urls.get(url);
+      if (!resolver) {
+        resolver = {};
+        resolver.promise = new Promise((resolve, reject) => {
+          resolver.resolve = resolve;
+          resolver.reject = reject;
+        });
+        urls.set(url, resolver);
       };
-      return ret;
+      return resolver;
     };
     return {
-      add(url, cancel) {
-        getCallbacks(url).add(cancel);
+      add(url) {
+        return getResolver(url).promise;
+      },
+      ok(url) {
+        getResolver(url).resolve(url);
       },
       cancel(url) {
-        for (let c of [...getCallbacks(url)]) {
-          try {
-            c();
-          } catch (e) {
-            console.error(e);
-          }
-        }
+        const e = new Error(`Patching cancelled for url ${url}`);
+        e.url = url;
+        getResolver(url).reject(e);
       },
     };
   })();
@@ -90,6 +94,60 @@
       construct(target, args) {
         return handlePatch(constructWorker, target, args);
       }
+    };
+
+    const createConstructorProxy = (Original) => {
+      return new Proxy(Original, {
+        construct(target, args) {
+          const [url, options] = args;
+          let realInstance = null;
+          const queue = [];
+          const listenerCache = new Map();
+
+          const release = () => {
+            realInstance = new Original(url, options);
+            // Sync listeners
+            listenerCache.forEach((items, type) => {
+              items.forEach(item => realInstance.addEventListener(type, item.fn, item.opts));
+            });
+            // Replay actions
+            queue.forEach(task => task(realInstance));
+            queue.length = 0;
+          };
+
+          failSafe.add(url).then(release, e => console.error(e));
+
+          return new Proxy({}, {
+            get(t, prop) {
+              if (realInstance) return Reflect.get(realInstance, prop);
+
+              // Proxy methods from the original prototype
+              if (typeof Original.prototype[prop] === 'function') {
+                return (...mArgs) => {
+                  if (prop === 'addEventListener') {
+                    const [type, fn, opts] = mArgs;
+                    if (!listenerCache.has(type)) listenerCache.set(type, []);
+                    listenerCache.get(type).push({ fn, opts });
+                  }
+                  if (realInstance) return realInstance[prop](...mArgs);
+                  queue.push(inst => inst[prop](...mArgs));
+                };
+              }
+              return Reflect.get(t, prop);
+            },
+            set(t, prop, value) {
+              if (realInstance) return Reflect.set(realInstance, prop, value);
+              queue.push(inst => { inst[prop] = value; });
+              return true;
+            },
+            getPrototypeOf() { return Original.prototype; }
+          });
+        },
+        get(target, prop) {
+          if (prop === 'prototype') return Original.prototype;
+          return Reflect.get(target, prop);
+        }
+      });
     };
 
     const handlePatch = (createPatched, target, args) => {
@@ -138,18 +196,29 @@
         const preamble = isWorker ?
           // here we hide URL modifications
           `
-            console.debug("Patching worker", globalThis, globalThis.location?.href); // DEV_ONLY
-            const handler = {
-              apply(target, thisArg, args) {
-                return location === thisArg ? ${JSON.stringify(url)} : Reflect.apply(target, thisArg, args);
+            const location = globalThis.location;
+            const url = new URL(${JSON.stringify(url)});
+
+            console.debug("Patching worker", globalThis, location?.href); // DEV_ONLY
+            const handler = name => {
+            return {
+                apply(target, thisArg, args) {
+                  return location === thisArg ? url[name] : Reflect.apply(target, thisArg, args);
+                }
               }
             };
             const wlProto = WorkerLocation.prototype;
-            const pd = Object.getOwnPropertyDescriptor(wlProto, "href");
-            pd.get = new Proxy(pd.get, handler);
-            Object.defineProperty(wlProto, "href", pd);
-            wlProto.toString = new Proxy(wlProto.toString, handler);
-          ` : `
+            for (const [name, pd] of Object.entries(Object.getOwnPropertyDescriptors(wlProto))) {
+              if ("get" in pd && name in url) {
+                pd.get = new Proxy(pd.get, handler(name));
+                Object.defineProperty(wlProto, name, pd);
+              }
+            }
+            wlProto.toString = new Proxy(wlProto.toString, handler("href"));
+            console.debug(Patched worker disguised location (was ${location})\`, globalThis.location); // DEV_ONLY
+          `
+          :
+          `
             console.debug("Patching worklet", globalThis); // DEV_ONLY
           `;
         patch = `
@@ -170,13 +239,10 @@
         return createPatched(target, args);
       }
       url = url.href;
-      const patching = patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
+      patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
       const isWorklet = createPatched != constructWorker;
       console.debug(`Patching remote ${isWorklet ? "worklet" : "worker"} worker`, url); // DEV_ONLY
-      const worker = createPatched(isWorklet ? patching : target, args)
-      if (worker instanceof Worker) { // could also be a worklet
-        failSafe?.add(url, () => apply(terminate, worker, []));
-      }
+      const worker = createPatched(target, args);
       return worker;
     };
 
@@ -193,15 +259,25 @@
         const { addModule } = prototype;
         exportFunction(function(...args) {
           return handlePatch(
-            async (target, args) => {
-              console.debug("Worklet creation", target, this, args); // DEV_ONLY
-              await target;
-              addModule.apply(this, args);
+           (target, args) => {
+              console.debug("Worklet creation", target, args, this); // DEV_ONLY
+              if (/^(?:data|blob):/.test(args[0])) {
+                return addModule.apply(this, args);
+              }
+              const p = new w.Promise((resolve, reject) => {
+                failSafe.add(args[0]).then(
+                  () => {
+                    resolve(addModule.apply(this, args));
+                  },
+                  () => resolve()
+                );
+              });
+              return p;
             },
             this,
             args
           );
-        }, prototype, {defineAs: "addModule"});
+        }, prototype, { defineAs: "addModule" });
       }
     }
 
@@ -231,10 +307,13 @@
             error(e);
           }
           const registration = apply(target, thisArg, args);
-          failSafe?.add(url, () => {
-            registration.then(r => apply(unregister, r, []));
-          });
-          registration.then(r => apply(update, r, []));
+          failSafe?.add(url).then(
+            () => {
+              registration.then(r => apply(update, r, []));
+            },
+            () => {
+              registration.then(r => apply(unregister, r, []));
+            });
           return registration;
         }
       }, ServiceWorkerContainer.prototype);
@@ -248,7 +327,10 @@
       patchWindow(modifyContext, { port });
     },
     onMessage(msg, {port}) {
-      switch(msg.type) {
+      switch (msg.type) {
+        case "patchedUrl":
+          failSafe.ok(msg.url);
+        break;
         case "cancelUrl":
           failSafe.cancel(msg.url);
         break;

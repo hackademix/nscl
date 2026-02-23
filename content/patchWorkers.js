@@ -23,7 +23,6 @@
 "use strict";
 globalThis.patchWorkers = (() => {
   const patches = new Set();
-  const patchedUrls = new Set();
   let propagator = "";
 
   let stringify = f => typeof f === "function" ? `(${f})();\n` : `{${f}}\n`;
@@ -56,7 +55,7 @@ globalThis.patchWorkers = (() => {
   const joinPatches = () => wrap([...patches].join("\n"));
 
   browser.runtime.onMessage.addListener(({ __getWorkerPatch__ }) =>
-    (patchedUrls.has(__getWorkerPatch__?.url)) ? joinPatches() : undefined
+    __getWorkerPatch__ ? joinPatches() : undefined
   );
 
   return patch => {
@@ -78,12 +77,11 @@ globalThis.patchWorkers = (() => {
             {
               let {url, isServiceOrShared} = msg;
               url = `${url}`;
-              patchedUrls.add(url);
               const workerCreatedMsg = {
                 __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
               };
               browser.runtime.sendMessage(workerCreatedMsg).then(r => {
-                port.postMessage({type: "patchedUrl", url});
+                port.postMessage({ type: "patchedUrl", url });
               }, e => {
                 console.error(e, "Could not patch", url); // DEV_ONLY
                 // terminate / unregister workers which could not be patched

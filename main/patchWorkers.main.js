@@ -24,6 +24,133 @@
 {
   const { console, patchWindow, exportFunction } = Worlds.main;
 
+  const proxyWorkers = window?.wrappedJSObject
+    ? () => { }
+    : () => {
+      // Chromium only
+      const Originals = {
+        Worker: window.Worker,
+        SharedWorker: window.SharedWorker,
+        getDescriptor: Object.getOwnPropertyDescriptor,
+        toString: Function.prototype.toString
+      };
+
+      const createConstructorProxy = (original) => {
+        return new Proxy(original, {
+          construct(target, args) {
+            if (/^(data|blob):/.test(args[0])) {
+              return new original(...args);
+            }
+            let realInstance = null;
+            const instQueue = [];
+            const instListeners = new Map();
+
+            // Setup Port Proxy specifically for SharedWorker
+            let realPort = null;
+            const portQueue = [];
+            const portListeners = new Map();
+
+            const portProxy = (target === Originals.SharedWorker) ? new Proxy({}, {
+              get(t, prop) {
+                if (realPort) return Reflect.get(realPort, prop);
+                if (typeof MessagePort.prototype[prop] === 'function') {
+                  return (...mArgs) => {
+                    if (prop === 'addEventListener') {
+                      const [type, fn, opts] = mArgs;
+                      if (!portListeners.has(type)) portListeners.set(type, []);
+                      portListeners.get(type).push({ fn, opts });
+                    }
+                    if (realPort) return realPort[prop](...mArgs);
+                    portQueue.push(p => p[prop](...mArgs));
+                  };
+                }
+                return t[prop];
+              },
+              set(t, prop, value) {
+                if (realPort) return Reflect.set(realPort, prop, value);
+                portQueue.push(p => { p[prop] = value; });
+                return true;
+              }
+            }) : null;
+
+            const release = () => {
+              realInstance = new original(...args);
+
+              // If this is a SharedWorker, initialize the port proxy
+              if (target === Originals.SharedWorker && realInstance.port) {
+                realPort = realInstance.port;
+                portListeners.forEach((list, type) => {
+                  list.forEach(item => realPort.addEventListener(type, item.fn, item.opts));
+                });
+                portQueue.forEach(task => task(realPort));
+              }
+
+              // Replay instance listeners and actions
+              instListeners.forEach((list, type) => {
+                list.forEach(item => realInstance.addEventListener(type, item.fn, item.opts));
+              });
+              instQueue.forEach(task => task(realInstance));
+            };
+
+            failSafe.add(args[0]).then(release);
+
+            return new Proxy({}, {
+              get(t, prop) {
+                // Check reference for SharedWorker port access
+                if (prop === 'port' && target === Originals.SharedWorker) return portProxy;
+                if (realInstance) return Reflect.get(realInstance, prop);
+
+                if (typeof original.prototype[prop] === 'function') {
+                  return (...mArgs) => {
+                    if (prop === 'addEventListener') {
+                      const [type, fn, opts] = mArgs;
+                      if (!instListeners.has(type)) instListeners.set(type, []);
+                      instListeners.get(type).push({ fn, opts });
+                    }
+                    if (realInstance) return realInstance[prop](...mArgs);
+                    instQueue.push(inst => inst[prop](...mArgs));
+                  };
+                }
+                return t[prop];
+              },
+              set(t, prop, value) {
+                if (realInstance) return Reflect.set(realInstance, prop, value);
+                instQueue.push(inst => { inst[prop] = value; });
+                return true;
+              },
+              getPrototypeOf() { return original.prototype; }
+            });
+          },
+          get(target, prop) {
+            if (prop === 'prototype') return original.prototype;
+            return Reflect.get(target, prop);
+          }
+        });
+      };
+
+      // 1. Initialize Global Proxies
+      window.Worker = createConstructorProxy(Originals.Worker);
+      window.SharedWorker = createConstructorProxy(Originals.SharedWorker);
+
+      // 2. Disguise Property Descriptors
+      Object.getOwnPropertyDescriptor = function (obj, prop) {
+        if (obj === window && (prop === 'Worker' || prop === 'SharedWorker')) {
+          return {
+            value: window[prop],
+            writable: true, enumerable: false, configurable: true
+          };
+        }
+        return Originals.getDescriptor.apply(this, arguments);
+      };
+
+      // 3. Mask toString()
+      const hide = (p, o) => {
+        p.toString = function () { return Originals.toString.call(o); };
+      };
+      hide(window.Worker, Originals.Worker);
+      hide(window.SharedWorker, Originals.SharedWorker);
+    };
+
   const failSafe = (() => {
     const urls = new Map();
     const getResolver = url => {
@@ -88,66 +215,11 @@
       });
 
     // patch Worker & SharedWorker
-    const terminate = Worker.prototype.terminate;
     const baseURI = globalThis.document?.baseURI || location.href;
     const workerHandler = {
       construct(target, args) {
         return handlePatch(constructWorker, target, args);
       }
-    };
-
-    const createConstructorProxy = (Original) => {
-      return new Proxy(Original, {
-        construct(target, args) {
-          const [url, options] = args;
-          let realInstance = null;
-          const queue = [];
-          const listenerCache = new Map();
-
-          const release = () => {
-            realInstance = new Original(url, options);
-            // Sync listeners
-            listenerCache.forEach((items, type) => {
-              items.forEach(item => realInstance.addEventListener(type, item.fn, item.opts));
-            });
-            // Replay actions
-            queue.forEach(task => task(realInstance));
-            queue.length = 0;
-          };
-
-          failSafe.add(url).then(release, e => console.error(e));
-
-          return new Proxy({}, {
-            get(t, prop) {
-              if (realInstance) return Reflect.get(realInstance, prop);
-
-              // Proxy methods from the original prototype
-              if (typeof Original.prototype[prop] === 'function') {
-                return (...mArgs) => {
-                  if (prop === 'addEventListener') {
-                    const [type, fn, opts] = mArgs;
-                    if (!listenerCache.has(type)) listenerCache.set(type, []);
-                    listenerCache.get(type).push({ fn, opts });
-                  }
-                  if (realInstance) return realInstance[prop](...mArgs);
-                  queue.push(inst => inst[prop](...mArgs));
-                };
-              }
-              return Reflect.get(t, prop);
-            },
-            set(t, prop, value) {
-              if (realInstance) return Reflect.set(realInstance, prop, value);
-              queue.push(inst => { inst[prop] = value; });
-              return true;
-            },
-            getPrototypeOf() { return Original.prototype; }
-          });
-        },
-        get(target, prop) {
-          if (prop === 'prototype') return Original.prototype;
-          return Reflect.get(target, prop);
-        }
-      });
     };
 
     const handlePatch = (createPatched, target, args) => {
@@ -215,7 +287,7 @@
               }
             }
             wlProto.toString = new Proxy(wlProto.toString, handler("href"));
-            console.debug(Patched worker disguised location (was ${location})\`, globalThis.location); // DEV_ONLY
+            console.debug(\`Patched worker disguised location (was \${location})\`, globalThis.location); // DEV_ONLY
           `
           :
           `
@@ -241,7 +313,7 @@
       url = url.href;
       patchRemoteWorkerScript(url, (target.wrappedJSObject || target) === w.SharedWorker);
       const isWorklet = createPatched != constructWorker;
-      console.debug(`Patching remote ${isWorklet ? "worklet" : "worker"} worker`, url); // DEV_ONLY
+      console.debug(`Patching remote ${isWorklet ? "worklet" : "worker"}`, url); // DEV_ONLY
       const worker = createPatched(target, args);
       return worker;
     };
@@ -324,6 +396,7 @@
 
   Worlds.connect("patchWorkers.main", {
     onConnect(port) {
+      proxyWorkers();
       patchWindow(modifyContext, { port });
     },
     onMessage(msg, {port}) {

@@ -89,7 +89,7 @@
 
       const patchInfo = updatePatch(patch, tabId, documentUrl, url);
 
-      return Promise.resolve(init(tab.id, url, patchInfo));
+      return init(tab.id, url, patchInfo);
     } catch (e) {
       console.error("Error on __patchWorkers__ message", e);
       return Promise.reject(e);
@@ -169,13 +169,12 @@
     }, ["blocking", "requestHeaders"]);
 
     // attach the listener above just once per session
-    return () => { };
+    return () => true;
   })() : async (...args) => {
     // Chromium
 
     // Section 1, run once per tab
 
-    // Use debugger breakpoints
     if (!chrome.debugger) {
       throw new Error("patchWorker.js - no debugger API: missing permission?");
     }
@@ -201,23 +200,25 @@
       if (!dbgInfo) {
         return;
       }
-      if (/^(?:Debugger.script|Runtime\.console)/.test(method)) return; // DEV_ONLY
-      console.debug("Debugger event", method, params, source); // DEV_ONLY
+
       switch (method) {
+        case "Network.requestWillBeSent":
+          if (params.type == "Script" || params.type == "Other") {
+            dbgInfo.requests.set(params.requestId, params.initiator.url);
+            break;
+          }
+          return;
         case "Fetch.requestPaused":
           await dbgInfo.handleRequest(source, params);
           break;
-        case "Target.attachedToTarget":
-          await dbgInfo.handleTarget(source, params);
-          break;
-        case "Runtime.executionContextCreated":
-          await dbgInfo.handleExecutionContext(source, params);
-          break;
-        case "Runtime.executionContextDestroyed":
-          await dbgInfo.dispose({ uniqueId: params.executionContextUniqueId });
-          break;
+        case "Network.loadingFinished":
+        case "Network.loadingFailed":
+          dbgInfo.requests.delete(params.requestId);
+          return;
+        default:
+          return;
       }
-
+      console.debug("Debugger event", method, params, source, dbgInfo.requests); // DEV_ONLY
     });
 
     dbg.onDetach.addListener((source, reason) => {
@@ -227,22 +228,8 @@
 
     // Section 2, run from now on
 
-    // see https://chromedevtools.github.io/devtools-protocol/tot/Target/#type-TargetFilter
-    // and https://source.chromium.org/chromium/chromium/src/+/main:content/browser/devtools/devtools_agent_host_impl.cc?ss=chromium&q=f:devtools%20-f:out%20%22::kTypeTab%5B%5D%22
-    const targetFilter = ["worker", "shared_worker", "service_worker", "worklet", "shared_storage_worklet", "auction_worklet"]
-          .map(type => ({ type, exclude: false }));
-    const attachParams = {
-      autoAttach: true,
-      waitForDebuggerOnStart: false,
-      flatten: true,
-      targetFilter,
-    };
     const fetchParams = {
       patterns: [
-        {
-          resourceType: "Script",
-          requestStage: "Response",
-        },
         {
           resourceType: "Other",
           requestStage: "Response",
@@ -251,22 +238,20 @@
     };
 
     return await (init = async (tabId, url, {patch}) => {
-      const dbgTarget = { tabId };
+      const target = { tabId };
       let dbgInfo = await debugging.get(tabId);
       if (!dbgInfo) {
-        const cmd = async (command, params) => await dbg.sendCommand(dbgTarget, command, params);
         const startingDebugger = (async () => {
           try {
             console.debug("Attaching debugger to", tabId); // DEV_ONLY
             try {
-              await dbg.attach(dbgTarget, "1.3");
+              await dbg.attach(target, "1.3");
             } catch (e) {
               // might just be because we're already attached
               console.error(e);
             }
-            await cmd("Debugger.enable");
-            await cmd("Target.setAutoAttach", attachParams);
-            await cmd("Fetch.enable", fetchParams);
+            await dbg.sendCommand(target, "Fetch.enable", fetchParams);
+            await dbg.sendCommand(target, "Network.enable");
           } catch (e) {
             console.error(e);
             throw e;
@@ -274,19 +259,35 @@
 
           console.debug("NoScript's patchWorker started debugger on ", tabId);
           return {
-            contexts: new Set(),
+            requests: new Map(),
             patches: new Map(),
 
             async handleRequest(source, params) {
-              const { requestId, responseHeaders, resourceType } = params;
+              const { requestId, responseHeaders } = params;
               const contentTypeHeader = responseHeaders?.find(h => h.name.toLowerCase() === "content-type");
               const isJS = /\bjavascript\b/.test(contentTypeHeader?.value);
               if (isJS) {
                 try {
+                  const initiatorUrl = this.requests.get(params.networkId);
+                  const codeChunks = [];
+                  if (initiatorUrl) {
+                    const { origin } = new URL(initiatorUrl);
+                    if (this.patches.has(origin)) {
+                      codeChunks.push(this.patches.get(origin).code);
+                    }
+                  }
                   const { origin } = new URL(params.request.url);
                   if (this.patches.has(origin)) {
+                    codeChunks.push(this.patches.get(origin).code);
+                  } else if (codeChunks[0]) {
+                    // inherit patch from document
+                    this.patch(origin, codeChunks[0]);
+                  }
+                  const code = [...new Set(codeChunks)].join(";");
+
+                  if (code) {
                     const response = await dbg.sendCommand(source, "Fetch.getResponseBody", { requestId });
-                    const body = this.patches.get(origin).code.concat(
+                    const body = code.concat(
                       response.base64Encoded ? atob(response.body) : response.body);
                     await dbg.sendCommand(source, "Fetch.fulfillRequest", {
                       requestId,
@@ -295,74 +296,15 @@
                       responseCode: params.responseStatusCode,
                       body: btoa(unescape(encodeURIComponent(body)))
                     });
-                    console.debug("Fetch: patched worker", params, body); // DEV_ONLY
+                    console.debug("Fetch: patched worker", params, { initiatorUrl, body }); // DEV_ONLY
                   }
                   return;
                 } catch (e) {
                   console.error("Cannot patch worker via Fetch", e, params);
                 }
               }
-              console.debug("Fetch: continuing ", requestId, resourceType);
+              console.debug("Fetch: continuing ", requestId);
               await dbg.sendCommand(source, "Fetch.continueRequest", { requestId });
-            },
-
-            async handleTarget(source, { sessionId, targetInfo }) {
-              const {url, type} = targetInfo;
-
-              const session = {...source, sessionId};
-              try {
-                const { origin } = new URL(url);
-                console.debug("Examining TargetInfo", type, targetInfo, this.patches.has(origin)); // DEV_ONLY
-                if (!(this.patches.has(origin) && /work(er|let)$/.test(type))) {
-                  return;
-                }
-                console.debug("Session %s (%s, %s), attaching debugger to patch workers.", sessionId, url, origin); // DEV_ONLY
-                if (!/worklet/.test(type)) {
-                  await dbg.sendCommand(session, "Target.setAutoAttach", attachParams).catch(e => {
-                    console.error("Attaching child workers failed", session, targetInfo, e);
-                  });
-                  // await dbg.sendCommand(session, "Fetch.enable", fetchParams);
-                }
-                // await dbg.sendCommand(session, "Runtime.enable");
-                return;
-                const expression = this.patches.get(origin)?.code;
-                console.debug("Patching worker", url, this.patches, source); // DEV_ONLY
-                await dbg.sendCommand(session, "Page.addScriptToEvaluateOnNewDocument", {
-                  source: expression,
-                  runImmediately: true,
-                });
-
-              } catch (e) {
-                console.error("Attaching failed", e, targetInfo, session);
-              } finally {
-                await dbg.sendCommand(source, "Runtime.runIfWaitingForDebugger");
-              }
-            },
-
-            async handleExecutionContext(source, { context }) {
-              try {
-                const { origin } = new URL(context.origin);
-                const { uniqueId } = context;
-                const expression = this.patches.get(origin)?.code;
-                console.debug("Patching worker", context.origin, this.patches, context, source); // DEV_ONLY
-                dbg.sendCommand(source, "Runtime.runIfWaitingForDebugger");
-                if (expression) {
-                  await dbg.sendCommand(source, "Runtime.evaluate", {
-                    expression,
-                    silent: true,
-                    // uniqueContextId: uniqueId,
-                    contextId: context.id,
-                    allowUnsafeEvalBlockedByCSP: true,
-                  });
-                } else {
-                  console.warn("No worker patch find for origin", origin);
-                }
-                this.contexts.add(uniqueId);
-              } catch (e) {
-                console.error("Runtime.evaluate failed", e, source, context);
-              } finally {
-                //await dbg.sendCommand(source, "Runtime.runIfWaitingForDebugger");
-              }
             },
 
             patch(origin, code) {
@@ -374,39 +316,16 @@
                 patch.count++;
               }
             },
-            async dispose(executionContext) {
-              console.debug("Disposing", executionContext?.uniqueId); // DEV_ONLY
-              if (!executionContext) {
-                this.patches.clear();
-                this.contexts.clear();
-              } else {
-                if (this.contexts.has(executionContext.uniqueId)) {
-                  this.contexts.delete(executionContext.uniqueId);
-                  if (this.contexts.size == 0) {
-                    this.patches.clear();
-                  }
-                }
+            async dispose() {
+              this.patches.clear();
+              this.requests.clear();
+              console.debug("Detaching debugger from tab", target.tabId); // DEV_ONLY
+              try {
+                await dbg.detach(target);
+              } catch (e) {
+                console.error(e);
               }
-              if (this.patches.size === 0 && this.contexts.size == 0) {
-                console.debug("Detaching debugger from tab", dbgTarget.tabId); // DEV_ONLY
-                try {
-                  await cmd("Target.setAutoAttach", {autoAttach: false, waitForDebuggerOnStart: false});
-                } catch (e) {
-                  console.error(e);
-                }
-                try {
-                  await dbg.detach(dbgTarget);
-                } catch (e) {
-                  console.error(e);
-                }
-
-                try {
-                  await cmd("Debugger.disable");
-                } catch (e) {
-                   console.error(e); // DEV_ONLY
-                }
-                debugging.delete(dbgTarget.tabId);
-              }
+              debugging.delete(target.tabId);
             }
           }
         })();

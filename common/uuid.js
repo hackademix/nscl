@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -35,7 +35,7 @@
       return v.toString(16);
     });
 
-  var uuid = function() {
+  globalThis.uuid = () => {
     try {
       return _impl();
     } catch (e) {

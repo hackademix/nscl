@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -21,6 +21,10 @@
 "use strict";
 {
   const isMainWorld = !(globalThis.browser?.runtime);
+  const uuid = globalThis.uuid;
+  if (isMainWorld) {
+    delete globalThis.uuid;
+  }
   let ended = false;
 
   // unless we're on Gecko < 128, where MAIN world is not supported and we do everything through xray

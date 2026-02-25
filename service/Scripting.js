@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -56,8 +56,31 @@ globalThis.Scripting ||= (() => {
     }));
   }
 
+  async function repeat(executor, attempts = 1) {
+    console.debug(`Trying content script ${attempts} times`, executor); // DEV_ONLY
+    let execute = executor;
+    if (typeof executor == "object") {
+      const run = executor.run || Scripting.executeScript;
+      const details = executor;
+      delete executor.run;
+      execute = async () => await run.call(Scripting, details);
+    }
+    while (attempts-- > 0) {
+      try {
+        return await execute();
+      } catch (e) {
+        console.error(`Error trying content script, ${attempts} attempts left.`, e, executor); // DEV_ONLY
+        if (/Invalid frame IDs/.test(e.message) || attempts <= 0) {
+          throw e;
+        }
+        console.debug(`Retrying content script ${attempts} more times`, executor); // DEV_ONLY
+      }
+    }
+  }
+
   return browser.scripting
   ? {
+    repeat,
     async executeScript(details) {
       return await browser.scripting.executeScript(fixDefaults(details));
     },
@@ -66,6 +89,7 @@ globalThis.Scripting ||= (() => {
     },
   }
   : {
+    repeat,
     async executeScript(details) {
       const {target} = details;
       const {frameId} = target;

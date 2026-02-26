@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -32,7 +32,8 @@ var DocRewriter = (() => {
 
 
   return {
-    rewrite(content) {
+    rewrite(content, restoreScrollPosition = false) {
+      const { scrollX, scrollY } = window;
       const { doctype }  = document;
       pristine.open();
       if (doctype?.name) {
@@ -53,6 +54,9 @@ var DocRewriter = (() => {
       }
       pristine.write(content);
       pristine.close();
+      if (restoreScrollPosition) {
+        window.scrollTo(scrollX, scrollY);
+      }
     }
   }
 })();

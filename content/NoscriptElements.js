@@ -90,7 +90,7 @@ var NoscriptElements = {
       const html = document.documentElement.outerHTML;
       debug("Rewriting page to emulate meta-refresh", html);
       try {
-        DocRewriter.rewrite(html);
+        DocRewriter.rewrite(html, true);
       } catch (e) {
         error(e);
       }

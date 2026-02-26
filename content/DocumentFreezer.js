@@ -154,6 +154,125 @@ globalThis.DocumentFreezer = (() => {
       firedDOMContentLoaded = false;
       return true;
     },
+    unfreezeLive() {
+      return this.unfreeze(true);
+    },
+    unfreezeDetached() {
+      return this.unfreeze(false);
+    },
+    unfreezeAutoReload() {
+      if (!this.isFrozen) {
+        return;
+      }
+
+      if (this.suppressedScripts === 0 && readyState === "loading") {
+        // we don't care reloading, if no script has been suppressed
+        // and no readyState change has been fired yet
+        this.unfreezeLive(); // live
+        return;
+      }
+
+      const softReload = ev => {
+        removeEventListener("DOMContentLoaded", softReload, true);
+        try {
+          debug("Soft reload", ev); // DEV_ONLY
+          try {
+            const isDir = document.querySelector("link[rel=stylesheet][href^='chrome:']")
+                && document.querySelector(`base[href^="${url}"]`);
+            if (isDir || document.contentType !== "text/html") {
+              throw new Error(`Can't document.write() on ${isDir ? "directory listings" : document.contentType}`)
+            }
+
+            const root = this.unfreeze(false); // off-document
+            const html = root.outerHTML;
+            DocRewriter.rewrite(html, true);
+            debug("Written", html); // DEV_ONLY
+            // Work-around this rendering bug: https://forums.informaction.com/viewtopic.php?p=103105#p103050
+          } catch (e) {
+            debug("Can't use document.write(), XML document?", e);
+            try {
+              const eventSuppressor = ev => {
+                if (ev.isTrusted) {
+                  debug("Suppressing natural event", ev);
+                  ev.preventDefault();
+                  ev.stopImmediatePropagation();
+                  ev.currentTarget.removeEventListener(ev.type, eventSuppressor, true);
+                }
+              };
+              const svg = document.documentElement instanceof SVGElement;
+              if (svg) {
+                document.addEventListener("SVGLoad", eventSuppressor, true);
+              }
+              document.addEventListener("DOMContentLoaded", eventSuppressor, true);
+              if (ev) {
+                eventSuppressor(ev);
+              }
+              DocumentFreezer.unfreezeLive();
+              const scripts = [], deferred = [];
+              // push deferred scripts, if any, to the end
+              for (const s of document.getElementsByTagName("script")) {
+                (s.defer && !s.text ? deferred : scripts).push(s);
+                s.addEventListener("beforescriptexecute", e => {
+                  console.debug("Suppressing", script);
+                  e.preventDefault();
+                });
+              }
+              if (deferred.length) {
+                scripts.push(...deferred);
+              }
+              const doneEvents = ["afterscriptexecute", "load", "error"];
+              (async () => {
+                for (const s of scripts) {
+                  const clone = document.createElementNS(s.namespaceURI, "script");
+                  for (const a of s.attributes) {
+                    clone.setAttributeNS(a.namespaceURI, a.name, a.value);
+                  }
+                  clone.innerHTML = s.innerHTML;
+                  await new Promise(resolve => {
+                    const listener = ev => {
+                      if (ev.target !== clone) return;
+                      debug("Resolving on ", ev.type, ev.target);
+                      resolve(ev.target);
+                      for (const et of doneEvents) {
+                        removeEventListener(et, listener, true);
+                      }
+                    };
+                    for (const et of doneEvents) {
+                      addEventListener(et, listener, true);
+                    }
+                    s.replaceWith(clone);
+                    debug("Replaced", clone);
+                  });
+                }
+                debug("All scripts done, firing completion events.");
+                document.dispatchEvent(new Event("readystatechange"));
+                if (svg) {
+                  document.documentElement.dispatchEvent(new Event("SVGLoad"));
+                }
+                document.dispatchEvent(new Event("DOMContentLoaded", {
+                  bubbles: true,
+                  cancelable: false
+                }));
+                if (document.readyState === "complete") {
+                  window.dispatchEvent(new Event("load"));
+                }
+              })();
+            } catch (e) {
+              error(e);
+            }
+          }
+        } catch(e) {
+          error(e);
+        }
+      };
+
+      if (DocumentFreezer.firedDOMContentLoaded || document.readyState !== "loading") {
+        softReload();
+      } else {
+        debug("Deferring softReload to DOMContentLoaded..."); // DEV_ONLY
+        addEventListener("DOMContentLoaded", softReload, true);
+      }
+    },
     unfreeze(live = true) {
       if (!document._frozenElements) {
         return false;
@@ -174,6 +293,9 @@ globalThis.DocumentFreezer = (() => {
       }
       delete document._frozenElements;
       return root;
+    },
+    get isFrozen() {
+      return !!document._frozenElements;
     },
     get suppressedScripts() { return suppressedScripts; },
     get firedDOMContentLoaded() { return firedDOMContentLoaded; },

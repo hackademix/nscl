@@ -151,8 +151,12 @@ if ("MediaSource" in window) {
 
     mozPatch = (scriptDisabled = false) => {
       mozPatch = () => {}; // just once;
-      debug(`Gecko mediaBlocker patches ${patchWindow.disabled || scriptDisabled ? "(except MSE interception)" : ""}`); // DEV_ONLY
-      if (!scriptDisabled) mozMsePatch();
+      debug(`Gecko mediaBlocker patches ${patchWindow?.disabled || scriptDisabled ? "(except MSE interception)" : ""}`); // DEV_ONLY
+      if (!patchWindow) {
+        error("Unavailable Worlds.main.patchWindow(): check your content script Main/Isolated worlds configuration!"); // DEV_ONLY
+      } else if(!scriptDisabled) {
+        mozMsePatch();
+      }
       if (location.protocol !== "file:") return;
       // Gecko doesn't block file:// media even with CSP media-src 'none',
       // neither intercepts them in webRequest.onBeforeLoad listeners :(

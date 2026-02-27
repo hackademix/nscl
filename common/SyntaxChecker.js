@@ -30,7 +30,7 @@ class SyntaxChecker {
           eval("''");
           this[asyncName] = this[methodName];
         } catch (e) {
-          await include("/nscl/lib/acorn.js");
+          await include("/nscl/lib/acorn.js"); // MV3
           const acornImpl = {
             checkAsync: function (script) {
               const func = `() => {${script}}`;

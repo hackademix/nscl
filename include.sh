@@ -17,12 +17,14 @@ fi
 TARGET="$(realpath "$TARGET")"
 BASE="$(dirname "$0")"
 SRC="$(realpath "$(dirname "$BASE")")"
-
-if ! [[ -d "$TARGET" ]]; then
-  echo 1>&2 "Target directory '$TARGET' not found!"
+MANIFEST="$TARGET/manifest.json"
+if ! [[ -f "$MANIFEST" ]]; then
+  echo 1>&2 "Target manifest $MANIFEST not found!"
   exit 1
 fi
 [[ -d "$TARGET/nscl" ]] && rm -rf "$TARGET"/nscl/**
+
+MANIFEST_VERSION=$(grep -Eh '"manifest_version":' "$MANIFEST" | grep -Eo '[0-9]+')
 
 filter_inclusions() {
   if [[ $1 = "-q" ]]; then
@@ -33,7 +35,7 @@ filter_inclusions() {
   pushd >/dev/null 2>&1 "$1"
   shift
   shopt -s globstar nullglob
-  for f in $(grep -Eho '\bnscl/[0-9a-zA-Z_/.-]+\.js(on)?' **/*.{js,html} "$@" | sort | uniq); do
+  for f in $(grep -E '.js(on)?[^a-zA-Z]*(MV'"$MANIFEST_VERSION"'|$)' **/*.{js,html} "$@" | grep -Eho '\bnscl/[0-9a-zA-Z_/.-]+\.js(on)?' | sort | uniq); do
     if ! [[ -f "$TARGET/$f" ]]; then
       nscl_srcdir="$(dirname "$f")"
       # create symlink to actual file if this is a MAIN world alias
@@ -60,7 +62,7 @@ filter_inclusions() {
   popd >/dev/null 2>&1
 }
 # if a service worker is declared in the manifest, we will inspect its script inclusions as well
-SERVICE_WORKER=$(grep -e '"service_worker":' "$TARGET/manifest.json" | sed -re 's/.*: "(.*)",?/\1/')
+SERVICE_WORKER=$(grep -e '"service_worker":' "$MANIFEST" | sed -re 's/.*: "(.*)",?/\1/')
 filter_inclusions "$TARGET" manifest.json $SERVICE_WORKER
 # include also references from nscl scripts already included
 [[ -d "$TARGET/nscl" ]] && filter_inclusions -q "$TARGET/nscl/"

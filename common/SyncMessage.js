@@ -421,7 +421,7 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
                   if (rxPolicy.test(name)) {
                     value = allowSyncXhr(h.value);
                   } else if (name == CSP) {
-                    value = h.value.replace(/connect-src [^;]+/g, m => {
+                    value = h.value.replace(/(?:connect|default)-src [^;]+/g, m => {
                       const tokens = new Set(m.split(/\s+/));
                       tokens.delete("'none'");
                       const msgSrc = new URL(REQUEST_PREFIX).origin;

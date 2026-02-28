@@ -165,7 +165,7 @@ globalThis.DocumentFreezer = (() => {
         return;
       }
 
-      if (this.suppressedScripts === 0 && readyState === "loading") {
+      if (this.suppressedScripts == 0 && document.readyState == "loading") {
         // we don't care reloading, if no script has been suppressed
         // and no readyState change has been fired yet
         this.unfreezeLive(); // live

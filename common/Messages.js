@@ -116,13 +116,21 @@
       console.debug("Returned %o from Messages.send", ret, args); // DEV_ONLY
       return ret;
     },
-    async _send(name, args = {}, recipientInfo = null) {
-      args.__meta = {name, recipientInfo};
+    async _send(name, args = {}, contentTarget = null) {
+      args.__meta = {name, recipientInfo: contentTarget};
       args._messageName = name; // legacy protocol, for embedders
-      if (recipientInfo && "tabId" in recipientInfo) {
-        let opts;
-        if ("frameId" in recipientInfo) opts = {frameId: parseInt(recipientInfo.frameId)};
-        return await browser.tabs.sendMessage(parseInt(recipientInfo.tabId), args, opts);
+      if (contentTarget) {
+        let { tabIds = [], tabId } = contentTarget;
+        if (tabId) {
+          const opts = "frameId" in contentTarget ? { frameId: parseInt(contentTarget.frameId) } : {};
+          return await browser.tabs.sendMessage(parseInt(tabId), args, opts);
+        } else if (!tabIds.length) {
+          tabIds.push(...(await browser.tabs.query({})).map(tab => tab.id));
+          if (!tabIds.length) {
+            return;
+          }
+        }
+        return await Promise.allSettled(tabIds.map(async (tabId) => await browser.tabs.sendMessage(parseInt(tabId), args)));
       }
       return await browser.runtime.sendMessage(args);
     },

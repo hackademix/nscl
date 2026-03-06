@@ -30,10 +30,37 @@ var DocRewriter = (() => {
     }
   }
 
+  function createSelector(el) {
+    if (!(el instanceof Element)) return;
+    const path = [];
+    while (el.nodeType === Node.ELEMENT_NODE) {
+      let selector = el.nodeName.toLowerCase();
+      if (el.parentNode && el !== document.documentElement) {
+        // Get the index among siblings of the same type
+        let index = 1;
+        let sibling = el.previousElementSibling;
+
+        while (sibling) {
+          if (sibling.nodeName === el.nodeName) {
+            index++;
+          }
+          sibling = sibling.previousElementSibling;
+        }
+        selector += `:nth-of-type(${index})`;
+      }
+
+      path.unshift(selector);
+      el = el.parentNode;
+      if (el === document || !el) break;
+    }
+    return path.join(" > ");
+  }
 
   return {
-    rewrite(content, restoreScrollPosition = false) {
+    rewrite(content, conservative = false) {
       const { scrollX, scrollY } = window;
+      const focusSelector = conservative &&
+        (createSelector(document.activeElement) || "[autofocus]");
       const { doctype }  = document;
       pristine.open();
       if (doctype?.name) {
@@ -54,8 +81,9 @@ var DocRewriter = (() => {
       }
       pristine.write(content);
       pristine.close();
-      if (restoreScrollPosition) {
+      if (conservative) {
         window.scrollTo(scrollX, scrollY);
+        document.querySelector(focusSelector)?.focus();
       }
     }
   }

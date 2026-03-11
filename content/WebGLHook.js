@@ -24,12 +24,16 @@
 "use strict";
 ns.on("capabilities", event => {
   debug(`WebGLHook on ${document.URL} ${document.readyState} ${document.documentElement?.innerHTML}`, ns.capabilities); // DEV_ONLY
-  if (!ns.canScript || ns.allows("webgl") ||
-      !("HTMLCanvasElement" in window && document.createElement("canvas").getContext("webgl"))) {
-    debug(`WebGLHook bailing out, no need to block webgl  on ${document.URL}.`); // DEV_ONLY
-    return;
-  }
 
+  const createCanvas = () => document.createElementNS("http://www.w3.org/1999/xhtml", "canvas");
+  try {
+    if (!ns.canScript || ns.allows("webgl") ||
+      !("HTMLCanvasElement" in window && createCanvas()?.getContext("webgl"))) {
+      debug(`WebGLHook bailing out, no need to block webgl  on ${document.URL}.`); // DEV_ONLY
+      return;
+    }
+  } catch (e) {
+  }
   const notifyWebGL = canvas => {
     let request = {
       id: "noscript-webgl",
@@ -58,7 +62,7 @@ ns.on("capabilities", event => {
     DocRewriter.rewrite(scriptBlocker);
     DocRewriter.rewrite(html);
 
-    const target = document.body.appendChild(document.createElement("canvas"));
+    const target = document.body.appendChild(createCanvas());
     target.style = "position: fixed; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%";
     notifyWebGL(target);
   }

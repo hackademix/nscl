@@ -78,7 +78,10 @@ if ("MediaSource" in window) {
   if (window.wrappedJSObject) {
     const { patchWindow } = Worlds.main;
     // Fallback: Mozilla does not seem to trigger CSP media-src http: for blob: URIs assigned in MSE
-    window.wrappedJSObject.document.createElement("video").src = "data:"; // triggers early mediaBlocker initialization via CSP
+    window.wrappedJSObject.document
+      .createElementNS("http://www.w3.org/1999/xhtml", "video")
+      .src = "data:"; // triggers early mediaBlocker initialization via CSP
+
     ns.on("capabilities", e => {
       mediaBlocker = !ns.allows("media");
       if (mediaBlocker) {

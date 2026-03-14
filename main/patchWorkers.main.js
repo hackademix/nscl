@@ -192,14 +192,70 @@
     const {
       encodeURIComponent,
       ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
-      Proxy, Promise
+      Proxy, Promise,
+      TrustedTypePolicyFactory,
+      TrustedScriptURL,
     } = globalThis;
 
+    const trustedTypeSupport = TrustedTypePolicyFactory
+      ? (() => {
+        let policy = null;
+        const authorized = new Set();
+
+        const { prototype } = TrustedTypePolicyFactory;
+        const originalCreate = prototype.createPolicy;
+
+        prototype.createPolicy = new Proxy(originalCreate, {
+          apply(target, thisArg, args) {
+            const [name, rules] = args;
+            console.debug("Proxying TrustedTypePolicy", name, rules); // DEV_ONLY
+            if (!rules || typeof rules.createScriptURL !== "function") {
+              return Reflect.apply(target, thisArg, args);
+            }
+
+            const interceptedRules = {
+              ...rules,
+              createScriptURL(input, ...rest) {
+                if (authorized.has(input)) return input;
+                return rules.createScriptURL.call(this, input, ...rest);
+              }
+            };
+
+            return policy = Reflect.apply(target, thisArg, [name, interceptedRules]);
+          }
+        });
+
+        return {
+          createScriptURL(s) {
+            authorized.add(s);
+            try {
+              console.debug("trustedTypeSupport.createScriptURL", s, policy, new Error().stack); // DEV_ONLY
+              if (!policy) {
+                policy = originalCreate.call(globalThis.trustedTypes, "noscript", { createScriptURL(s) { return s } });
+              }
+              return policy ? policy.createScriptURL(s) : s;
+            } finally {
+              authorized.delete(s);
+            }
+          }
+        }
+      })()
+      : {
+        createScriptURL(s) {
+          return s;
+        },
+      };
 
     const error = console.error.bind(console);
 
     const createObjectURL = URL.createObjectURL.bind(URL);
-    const constructWorker = Reflect.construct.bind(Reflect);
+    const fnConstruct = Reflect.construct.bind(Reflect);
+    const constructWorker = (target, args) => {
+      if (args._originalURL instanceof TrustedScriptURL) {
+        args[0] = trustedTypeSupport.createScriptURL(args[0]);
+      }
+      return fnConstruct(target, args);
+    }
     const apply = Reflect.apply.bind(Reflect);
 
     const patchRemoteWorkerScript = (url, isServiceOrShared) =>
@@ -225,6 +281,7 @@
     const handlePatch = (createPatched, target, args) => {
       const isWorker = createPatched == constructWorker;
       // string coercion may have side effects, let's clear it up immediately
+      args._originalURL = args[0];
       args[0] = `${args[0]}`;
       let url;
       try {
@@ -301,7 +358,8 @@
             ${patch}
           }
           `.replace(/^\s+/mg, '');
-        args[0] = url.protocol === "data:" ? `data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
+        args[0] = url.protocol === "data:"
+          ? `data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
           : createObjectURL(new Blob([patch, ";\n", content()], { type: "application/javascript" }));
         return createPatched(target, args);
       }
@@ -362,7 +420,9 @@
           console.debug("Patching service worker", args); // DEV_ONLY
           try {
             // handle string coercion and its potential side effects right away
-            args[0] = `${args[0]}`;
+            args[0] = args[0] instanceof TrustedScriptURL
+              ? trustedTypeSupport.createScriptURL(`${args[0]}`)
+              : `${args[0]}`;
           } catch (e) {
             return Promise.reject(e);
           }

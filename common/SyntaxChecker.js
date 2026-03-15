@@ -17,7 +17,7 @@
  * You should have received a copy of the GNU General Public License along with
  * this program. If not, see <https://www.gnu.org/licenses/>.
  */
-// depends on /nscl/lib/acorn.js MV3
+// depends on /nscl/lib/acorn.js
 class SyntaxChecker {
   constructor() {
     this.lastError = null;
@@ -30,7 +30,7 @@ class SyntaxChecker {
           eval("''");
           this[asyncName] = this[methodName];
         } catch (e) {
-          await include("/nscl/lib/acorn.js"); // MV3
+          await include("/nscl/lib/acorn.js");
           const acornImpl = {
             checkAsync: function (script) {
               const func = `() => {${script}}`;

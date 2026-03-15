@@ -226,7 +226,10 @@
         });
 
         return {
-          createScriptURL(s) {
+          createScriptURL(s, original) {
+            if (!(original instanceof TrustedScriptURL)) {
+              return s;
+            }
             authorized.add(s);
             try {
               console.debug("trustedTypeSupport.createScriptURL", s, policy, new Error().stack); // DEV_ONLY
@@ -251,9 +254,7 @@
     const createObjectURL = URL.createObjectURL.bind(URL);
     const fnConstruct = Reflect.construct.bind(Reflect);
     const constructWorker = (target, args) => {
-      if (args._originalURL instanceof TrustedScriptURL) {
-        args[0] = trustedTypeSupport.createScriptURL(args[0]);
-      }
+      args[0] = trustedTypeSupport.createScriptURL(args[0], args._originalURL);
       return fnConstruct(target, args);
     }
     const apply = Reflect.apply.bind(Reflect);
@@ -420,9 +421,7 @@
           console.debug("Patching service worker", args); // DEV_ONLY
           try {
             // handle string coercion and its potential side effects right away
-            args[0] = args[0] instanceof TrustedScriptURL
-              ? trustedTypeSupport.createScriptURL(`${args[0]}`)
-              : `${args[0]}`;
+            args[0] = trustedTypeSupport.createScriptURL(`${args[0]}`, args[0]);
           } catch (e) {
             return Promise.reject(e);
           }

@@ -203,9 +203,8 @@
         const authorized = new Set();
 
         const { prototype } = TrustedTypePolicyFactory;
-        const originalCreate = prototype.createPolicy;
-
-        prototype.createPolicy = new Proxy(originalCreate, {
+        const { createPolicy } = prototype;
+        const handler = {
           apply(target, thisArg, args) {
             const [name, rules] = args;
             console.debug("Proxying TrustedTypePolicy", name, rules); // DEV_ONLY
@@ -223,7 +222,13 @@
 
             return policy = Reflect.apply(target, thisArg, [name, interceptedRules]);
           }
-        });
+        };
+
+        if (xray) {
+          xray.proxify("createPolicy", handler, prototype);
+        } else {
+          prototype.createPolicy = new Proxy(createPolicy, handler);
+        }
 
         return {
           createScriptURL(s, original) {
@@ -234,7 +239,7 @@
             try {
               console.debug("trustedTypeSupport.createScriptURL", s, policy, new Error().stack); // DEV_ONLY
               if (!policy) {
-                policy = originalCreate.call(globalThis.trustedTypes, "noscript", { createScriptURL(s) { return s } });
+                policy = createPolicy.call(globalThis.trustedTypes, "noscript", { createScriptURL(s) { return s } });
               }
               return policy ? policy.createScriptURL(s) : s;
             } finally {

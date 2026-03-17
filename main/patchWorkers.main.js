@@ -260,7 +260,8 @@
     const fnConstruct = Reflect.construct.bind(Reflect);
     const constructWorker = (target, args) => {
       args[0] = trustedTypeSupport.createScriptURL(args[0], args._originalURL);
-      return fnConstruct(target, args);
+      delete args._originalURL;
+      return fnConstruct(target, args.wrappedJSObject || args);
     }
     const apply = Reflect.apply.bind(Reflect);
 

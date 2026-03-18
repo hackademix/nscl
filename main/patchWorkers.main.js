@@ -222,7 +222,7 @@
             };
 
             policy = Reflect.apply(target, thisArg, [name, interceptedRules]);
-            return xray.forPage(policy);
+            return policy;
           }
         };
 

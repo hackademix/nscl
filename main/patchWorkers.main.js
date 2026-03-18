@@ -206,6 +206,7 @@
         const { createPolicy } = prototype;
         const handler = {
           apply(target, thisArg, args) {
+            args = xray.unwrap(args);
             const [name, rules] = args;
             console.debug("Proxying TrustedTypePolicy", name, rules); // DEV_ONLY
             if (!rules || typeof rules.createScriptURL !== "function") {
@@ -220,7 +221,8 @@
               }
             };
 
-            return policy = Reflect.apply(target, thisArg, [name, interceptedRules]);
+            policy = Reflect.apply(target, thisArg, [name, interceptedRules]);
+            return xray.forPage(policy);
           }
         };
 

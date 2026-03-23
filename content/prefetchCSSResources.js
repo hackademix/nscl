@@ -21,7 +21,7 @@
 // depends on /nscl/common/uuid.js
 
 "use strict";
-function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
+function prefetchCSSResources(pp0MitigationOnly = false, ruleCallback = null) {
   async function sendMessage(type, opts) {
     return await browser.runtime.sendMessage({
       __prefetchCSSResources__: {
@@ -130,13 +130,17 @@ function prefetchCSSResources(only3rdParty = false, ruleCallback = null) {
       } catch (e) {
         continue;
       }
-      if (only3rdParty && url.hostname === hostname) {
+      if (pp0MitigationOnly) {
+        if (url.hostname == hostname) {
+          continue;
+        }
+        const { origin } = url;
+        if (resources.has(origin)) continue;
+        resources.add(origin);
         continue;
       }
 
-      let { origin } = url;
-      if (resources.has(origin)) continue;
-      resources.add(origin);
+
       if (ruleCallback && ruleCallback(rule, url)) {
         // if ruleCallback returns true we assume it handled or suppressed prefetching by itself
         continue;

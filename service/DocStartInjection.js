@@ -201,7 +201,7 @@ var DocStartInjection = (() => {
           }
           console.error(`DocStartInjection at ${url} ${attempts} failed attempts so far...`);
         }
-        if (execute()) {
+        if (await execute()) {
           success = true;
           break;
         }
@@ -212,7 +212,7 @@ var DocStartInjection = (() => {
         if (!/\baccess\b/.test(e.message)) {
           console.error(e.message);
         }
-        if (!browser.tabs.executeScript) {
+        if (!browser.tabs.executeScript && e.message != "Frame with ID 0 was removed.") {
           console.error(`MV3 fatality, cannot script tab ${tabId}! ${JSON.stringify(args)}`);
           break;
         }

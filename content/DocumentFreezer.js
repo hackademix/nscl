@@ -21,9 +21,9 @@
 'use strict'
 globalThis.DocumentFreezer = (() => {
 
-  const loaderAttributes = ["data", "href", "src", "xlink"];
+  const loaderAttributes = ["data", "formaction", "href", "src", "srcdoc", "xlink"];
   const scriptAttributes = ["language", "type"];
-  const jsOrDataUrlRx = /^(?:data:(?:[^,;]*ml|unknown-content-type)|javascript:)/i;
+  const jsOrDataUrlRx = /^\W*(?:data:(?:[^,;]*ml|unknown-content-type)|javascript:)/i;
 
 
   const lazy = {
@@ -63,7 +63,9 @@ globalThis.DocumentFreezer = (() => {
       for (const a of el.attributes) {
         const name = a.localName.toLowerCase();
         if (loaderAttributes.includes(name)) {
-          if (jsOrDataUrlRx.test(a.value)) {
+          // if available, prefer DOM-reflected normalized property to raw attribute
+          const value = name in el ? el[name] : a.value;
+          if (jsOrDataUrlRx.test(value)) {
             loaders.push(a);
           }
         } else if (name.startsWith("on")) {

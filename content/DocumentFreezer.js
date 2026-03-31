@@ -52,6 +52,13 @@ globalThis.DocumentFreezer = (() => {
     console.debug(`Suppressing ${e.type} on `, e.target); // DEV_ONLY
   }
 
+  function disableScriptElement(el) {
+    const { nameSpaceURI } = el;
+    for (const name of scriptAttributes) {
+      el.setAttributeNS(nameSpaceURI, name, "disabled");
+    }
+  }
+
   function freezeAttributes(nodes = document.querySelectorAll("*")) {
     for (var el of nodes) {
       if ("_frozen" in el) {
@@ -91,10 +98,7 @@ globalThis.DocumentFreezer = (() => {
         : undefined)) {
         if (isScript) {
           suppressedScripts++;
-          const { nameSpaceURI } = el;
-          for (const name of scriptAttributes) {
-            el.setAttributeNS(nameSpaceURI, name, "disabled");
-          }
+          disableScriptElement(el);
         }
         document._frozenElements.add(el);
       }
@@ -137,6 +141,7 @@ globalThis.DocumentFreezer = (() => {
   let suppressedScripts = 0;
 
   return {
+    disableScriptElement,
     freeze() {
       if (document._frozenElements) {
         return false;

@@ -87,6 +87,7 @@ var PlaceHolder = (() => {
   new Handler("frame", "iframe");
   new Handler("object", "object, embed");
   new Handler("media", "video, audio, source");
+  new Handler("lan", "");
 
   function cloneStyle(src, dest,
     props = ["width", "height", "position", "*", "margin*"]) {
@@ -175,10 +176,15 @@ var PlaceHolder = (() => {
       this.replacements = new Set();
       this.handler = PlaceHolder.handlerFor(policyType);
       if (this.handler) {
+        if (!this.handler.selector) {
+          request.offscreen = true;
+          this.replace();
+          return;
+        }
         [...document.querySelectorAll(this.handler.selector)]
         .filter(element => this.handler.filter(element, request))
           .forEach(element => this.replace(element));
-      };
+      }
     }
 
     replace(element) {

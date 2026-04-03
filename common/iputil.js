@@ -28,12 +28,14 @@ var iputil = {
     } catch(e) {
       return false;
     }
-    if (!host) return true; // local file:///
     return iputil.isLocalHost(host, all, neverResolve);
   },
 
   _localDomainRx: /\.local$/i,
-  isLocalHost: function(host, all = false, neverResolve = false) {
+  isLocalHost: function (host, all = false, neverResolve = false) {
+    if (!host) {
+      return false;
+    }
     if (host === "localhost" || iputil._localDomainRx.test(host)) return true;
     if (iputil.isIP(host)) {
       return iputil.isLocalIP(host);

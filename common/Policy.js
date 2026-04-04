@@ -28,7 +28,7 @@ var Policy = (() => {
         untrusted: [],
         custom: {},
       },
-      DEFAULT: new Permissions(["frame", "fetch", "noscript", "other"]),
+      DEFAULT: new Permissions(["frame", "noscript", "other"]),
       TRUSTED: new Permissions(Permissions.ALL),
       UNTRUSTED: new Permissions(),
       enforced: true,

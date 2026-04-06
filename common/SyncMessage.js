@@ -553,6 +553,11 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
               let res;
               try {
                 res = pd.get.apply(this);
+              } catch (e) {
+                // might happen if on zombie wrapper / dead object
+                return window.event;
+              }
+              try {
                 res?.isTrusted;
                 return res;
               } catch (e) {

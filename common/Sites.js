@@ -56,9 +56,9 @@ var Sites = (() => {
       return originKey === site || site.startsWith(`${originKey}/`);
     }
 
-    static domainImplies(domainKey, site, protocol ="https?") {
+    static domainImplies(domainKey, site, protocol ="(?:http|ws)s?") {
       if (Sites.isSecureDomainKey(domainKey)) {
-        protocol = "https";
+        protocol = "(?:http|ws)s";
         domainKey = Sites.toggleSecureDomainKey(domainKey, false);
       }
       if (!site.includes(domainKey)) return false;
@@ -110,7 +110,7 @@ var Sites = (() => {
     static optimalKey(site) {
       let {url, siteKey} = Sites.parse(site);
       if (url) {
-        if (url.protocol === "https:") {
+        if (url.protocol == "https:" || url.protocol == "wss:") {
           return Sites.secureDomainKey(tld.getDomain(url.hostname));
         }
         if (url.protocol === "file:") {

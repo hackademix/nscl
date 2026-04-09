@@ -43,6 +43,9 @@ var Sites = (() => {
     static toggleSecureDomainKey(domain, b = !Sites.isSecureDomainKey(domain)) {
       return b ? Sites.secureDomainKey(domain) : domain.replace(SECURE_DOMAIN_RX, '');
     }
+    static isSecureProtocol(protocol) {
+      return protocol == "https:" || protocol == "wss:";
+    }
 
     static isValid(site) {
       return VALID_SITE_RX.test(site);
@@ -107,10 +110,12 @@ var Sites = (() => {
       return {url, siteKey};
     }
 
+
+
     static optimalKey(site) {
       let {url, siteKey} = Sites.parse(site);
       if (url) {
-        if (url.protocol == "https:" || url.protocol == "wss:") {
+        if (Sites.isSecureProtocol(url.protocol)) {
           return Sites.secureDomainKey(tld.getDomain(url.hostname));
         }
         if (url.protocol === "file:") {
@@ -210,8 +215,8 @@ var Sites = (() => {
       let {protocol, hostname} = url;
       if (!hostname) return null;
       if (!tld.preserveFQDNs) hostname = tld.normalize(hostname);
-      let secure = protocol === "https:";
-      let isIPv4 = IPV4_RX.test(hostname);
+      const secure = Sites.isSecureProtocol(protocol);
+      const isIPv4 = IPV4_RX.test(hostname);
       for (let domain = hostname;;) {
         if (this.has(domain)) {
           return domain;

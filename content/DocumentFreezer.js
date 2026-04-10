@@ -21,7 +21,7 @@
 'use strict'
 globalThis.DocumentFreezer = (() => {
 
-  const loaderAttributes = ["data", "formaction", "href", "src", "srcdoc", "xlink"];
+  const loaderAttributes = ["data", "formaction", "href", "src", "xlink"];
   const scriptAttributes = ["language", "type"];
   const jsOrDataUrlRx = /^\W*(?:data:(?:[^,;]*ml|unknown-content-type)|javascript:)/i;
 
@@ -75,7 +75,7 @@ globalThis.DocumentFreezer = (() => {
           if (jsOrDataUrlRx.test(value)) {
             loaders.push(a);
           }
-        } else if (name.startsWith("on")) {
+        } else if (name.startsWith("on") || name == "srcdoc") {
           console.debug("Removing", a, el.outerHTML); // DEV_ONLY
           attributes.push(a.cloneNode());
           a.value = "";

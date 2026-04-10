@@ -79,7 +79,6 @@ globalThis.DocumentFreezer = (() => {
           console.debug("Removing", a, el.outerHTML); // DEV_ONLY
           attributes.push(a.cloneNode());
           a.value = "";
-          el[name] = null;
         } else if (isScript && scriptAttributes.includes(name)) {
           attributes.push(a.cloneNode());
         }

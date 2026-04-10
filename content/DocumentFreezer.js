@@ -280,6 +280,7 @@ globalThis.DocumentFreezer = (() => {
       }
     },
     unfreeze(live = true) {
+      if (location.search.includes("__FROZEN__")) throw "FROZEN"; // DEV_ONLY
       if (!document._frozenElements) {
         return false;
       }

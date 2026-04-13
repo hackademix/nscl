@@ -88,8 +88,20 @@ var ContextStore = (() => {
     }
 
     async updateContainers(defaultPolicy = null) {
-      var identities = this.enabled && browser.contextualIdentities && await browser.contextualIdentities.query({});
-      if (!identities) return;
+      if (!(this.enabled && browser.contextualIdentities)) {
+        return;
+      }
+      let identities;
+      try {
+        identities = await browser.contextualIdentities.query({});
+      } catch (e) {
+        // privacy.userContext.ui.enabled pref turned to false mid session?
+        this.enabled = false;
+        this.disabledByHost = true;
+      }
+      if (!identities) {
+        return;
+      }
       identities.forEach(({cookieStoreId}) => {
         if (!this.policies.hasOwnProperty(cookieStoreId)) {
           if (!defaultPolicy) {

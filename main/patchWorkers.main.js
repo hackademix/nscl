@@ -376,8 +376,8 @@
         let workerSrc = loadWorkerSrc();
         if (workerSrc !== null) {
           args[0] = url.protocol === "data:"
-            ? `data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
-            : createObjectURL(new Blob([patch, ";\n", content()], { type: "application/javascript" }));
+            ? `data:application/javascript,${encodeURIComponent(`${patch};${workerSrc}`)}`
+            : createObjectURL(new Blob([patch, ";\n", workerSrc], { type: "application/javascript" }));
           return createPatched(target, args);
         }
       }

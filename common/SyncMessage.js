@@ -34,11 +34,11 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
     ?.some(({ resources }) =>
       resources.includes(`${INTERNAL_PATH}*`)
     );
-  const IPV6_DUMMY_ENDPOINT = "https://[ff00::]";
+  const IPV6_DUMMY_ENDPOINT = "https://[ff00::]/";
   const BASE_PREFIX = browser.runtime.getURL(INTERNAL_PATH);
   // We cannot use BASE_PREFIX w/ internal URIs for requests (yet?) because
   // neither DNR nor webRequest nor ServiceWorker intercept our own extension URLs :(
-  const REQUEST_PREFIX = `${IPV6_DUMMY_ENDPOINT}/${BASE_PREFIX}request.json?`;
+  const REQUEST_PREFIX = `${IPV6_DUMMY_ENDPOINT}${BASE_PREFIX}request.json?`;
   // But we can redirect to extension URLs on MV3
   const RESPONSE_PREFIX = USE_INTERNAL_URIS ? BASE_PREFIX + "response.json?" : "data:application/json,";
 
@@ -477,11 +477,11 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
         );
 
     console.debug("Using suspender", suspender, USE_SERVICE_WORKER); // DEV_ONLY
-
     browser.runtime.onSyncMessage = Object.freeze({
       BASE_PREFIX,
       REQUEST_PREFIX,
       RESPONSE_PREFIX,
+      DNR_URL_FILTER: `|${IPV6_DUMMY_ENDPOINT}*${INTERNAL_PATH}*`,
       addListener(l) {
         listeners.add(l);
       },
@@ -491,12 +491,10 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       hasListener(l) {
         return listeners.has(l);
       },
-      isMessageRequest({type, url}) {
-        return (
-          type === "xmlhttprequest" &&
-          url.includes(INTERNAL_PATH) &&
-          (url.includes(REQUEST_PREFIX) || url.includes(RESPONSE_PREFIX))
-        );
+      isMessageRequest({ type, url }) {
+        return type == "xmlhttprequest" &&
+          url.startsWith(IPV6_DUMMY_ENDPOINT) &&
+          url.replace(/[?#].*/g, '').includes(INTERNAL_PATH);
       },
     });
   } else {

@@ -306,7 +306,7 @@
 
         // Inline patching
 
-        let content = () => {
+        const loadWorkerSrc = () => {
           try {
             let xhr = new XMLHttpRequest();
             xhr.open("GET", url, false);
@@ -314,7 +314,11 @@
             return xhr.responseText;
           } catch (e) {
             error(e);
-            return "";
+            // On Chromium this error may mean CSP is blocking this blob: / data: xhr,
+            // we can try to fall back on remote patching / debugger API by returning null.
+            // On Firefox we use privileged xhr, so we better err on the safe side and
+            // return an empty string to "neuter" the worker.
+            return "mozSystem" in XMLHttpRequest.prototype ? "" : null;
           }
         };
 
@@ -369,10 +373,13 @@
             ${patch}
           }
           `.replace(/^\s+/mg, '');
-        args[0] = url.protocol === "data:"
-          ? `data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
-          : createObjectURL(new Blob([patch, ";\n", content()], { type: "application/javascript" }));
-        return createPatched(target, args);
+        let workerSrc = loadWorkerSrc();
+        if (workerSrc !== null) {
+          args[0] = url.protocol === "data:"
+            ? `data:application/javascript,${encodeURIComponent(`${patch};${content()}`)}`
+            : createObjectURL(new Blob([patch, ";\n", content()], { type: "application/javascript" }));
+          return createPatched(target, args);
+        }
       }
       // remote patching
       if (!w) {

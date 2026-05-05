@@ -31,6 +31,9 @@ globalThis.Scripting ||= (() => {
       if (!"injectImmediately" in details) {
         details.injectImmediately = true;
       }
+      if (details.func?.toString().startsWith("func()")) {
+        throw new SyntaxError("Using { func() {} } rather than { func: () => {} } would cause a serialization error!");
+      }
     }
     const {target} = details;
     if ("frameId" in target) {

@@ -26,7 +26,7 @@ Messages.addHandler("NSCLService", {
   async exitFullscreen(msg, {tabId}) {
     await Scripting.executeScript({
       target: {tabId},
-      func() {
+      func: () => {
         try {
           if (document.fullscreenElement) document.exitFullscreen();
         } catch (e) {}

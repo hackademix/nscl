@@ -262,7 +262,7 @@ var PlaceHolder = (() => {
       element.replaceWith(replacement);
 
       // do our best to bring it to front
-      for (let p = replacement; p = p.parentElement;) {
+      for (let p = replacement; (p = p.parentElement) && p != document.body;) {
         p.classList.add("__ns__pop2top");
       };
 
@@ -280,7 +280,7 @@ var PlaceHolder = (() => {
       debug("Received response", ret);
       if (!ret) return;
       // bring back ancestors
-      for (let p = replacement; p = p.parentElement;) {
+      for (let p = replacement; (p = p.parentElement) && p != document.body;) {
         p.classList.remove("__ns__pop2top");
       };
       if (ret.collapse) {
@@ -310,7 +310,7 @@ var PlaceHolder = (() => {
       replacement.classList.add("__ns__closing");
       this.replacements.delete(replacement);
       window.setTimeout(() => {
-        for (let p = replacement; p = p.parentElement;) {
+        for (let p = replacement; (p = p.parentElement) && p != document.body;) {
           p.classList.remove("__ns__pop2top");
         };
         replacement.remove()

@@ -28,16 +28,18 @@ if ("MediaSource" in window) {
       documentUrl: document.URL,
       embeddingDocument: true,
     }, request);
-    seen.record({policyType: "media", request, allowed});
-    debug("mediaBlocker notification", request); // DEV_ONLY
-    notifyPage();
+    seen.record({ policyType: "media", request, allowed });
+    if (!request.redundant) {
+      debug("mediaBlocker notification", request); // DEV_ONLY
+      notifyPage();
+    }
     return request;
   };
   const createPlaceholder = (mediaElement, request) => {
     try {
       let ph = PlaceHolder.create("media", request);
       ph.replace(mediaElement);
-      debug("mediaBlocker placeholder for %o", mediaElement); // DEV_ONLY
+      debug("mediaBlocker placeholder for %o", mediaElement, request); // DEV_ONLY
     } catch (e) {
       error(e);
     }
@@ -91,7 +93,7 @@ if ("MediaSource" in window) {
     });
     let mozMsePatch = () => patchWindow((win, {xray})=> {
       debug("Patching MSE for Gecko"); // DEV_ONLY
-      let unpatched = new Map();
+      const unpatched = new Map();
       function patch(obj, methodName, replacement) {
         let methods = unpatched.get(obj) || {};
         let method = xray.getSafeMethod(obj, methodName);
@@ -99,10 +101,10 @@ if ("MediaSource" in window) {
         obj[methodName] = exportFunction(replacement, obj, {original: obj[methodName]});
         unpatched.set(obj, methods);
       }
-      let urlMap = new WeakMap();
-      let URL = win.URL;
+      const urlMap = new WeakMap();
+      const { URL } = win;
       patch(URL, "createObjectURL",  function(o, ...args) {
-        let url = unpatched.get(URL).createObjectURL.call(this, o, ...args);
+        const url = unpatched.get(URL).createObjectURL.call(this, o, ...args);
         if (o instanceof MediaSource) {
           let urls = urlMap.get(o);
           if (!urls) urlMap.set(o, urls = new Set());
@@ -110,44 +112,52 @@ if ("MediaSource" in window) {
         }
         return url;
       });
-      let MediaSourceProto = win.MediaSource.prototype;
+      const blockedCodecs = new Set();
+      const { MediaSource } = win;
+      patch(MediaSource, "isTypeSupported", codec => {
+        return !blockedCodecs.has(codec) && unpatched.get(MediaSource).isTypeSupported(codec);
+      });
+
+      const MediaSourceProto = MediaSource.prototype;
       patch(MediaSourceProto, "addSourceBuffer", function(mime, ...args) {
         let ms = this;
         let urls = urlMap.get(ms);
         let request = notify(!mediaBlocker);
         if (mediaBlocker) {
-          let exposedMime = `${mime} (MSE)`;
-          setTimeout(() => {
-            try {
-              const allMedia = [...document.querySelectorAll("video,audio")];
-              let toBeReplaced = allMedia.filter(e => e.srcObject === ms ||
-                urls && (urls.has(e.currentSrc) || urls.has(e.src)));
-              if (!toBeReplaced.length) {
-                toBeReplaced =
-                // throwing may cause src not to be assigned at all:
-                allMedia.filter(e => !(e.src || e.currentSrc || e.srcObject));
+          const msg = `${mime} MediaSource blocked by NoScript`;
+          if (!ms._ns_replaced) {
+            setTimeout(() => {
+              try {
+                const allMedia = [...document.querySelectorAll("video,audio")];
+                let toBeReplaced = allMedia.filter(e => e.srcObject === ms ||
+                  urls && (urls.has(e.currentSrc) || urls.has(e.src)));
                 if (!toBeReplaced.length) {
-                  // x.com doesn't create media elements in advance, let's replace the containers
-                  // see tor-browser#44278#note_3284323
-                  toBeReplaced = document.querySelectorAll('div[data-testid="videoComponent"]');
+                  toBeReplaced =
+                    // throwing may cause src not to be assigned at all:
+                    allMedia.filter(e => !(e.src || e.currentSrc || e.srcObject));
+                  if (!toBeReplaced.length) {
+                    // x.com doesn't create media elements in advance, let's replace the containers
+                    // see tor-browser#44278#note_3284323
+                    toBeReplaced = document.querySelectorAll('div[data-testid="videoComponent"]');
+                  }
+                  if (!toBeReplaced.length && !request.redundant) {
+                    request.offscreen = true;
+                    createPlaceholder(null, request);
+                  }
                 }
-                if (!toBeReplaced.length) {
-                  request.offscreen = true;
-                  createPlaceholder(null, request);
+                for (const me of toBeReplaced) {
+                  createPlaceholder(me, request);
+                  ms._ns_replaced = true;
                 }
+              } catch (e) {
+                error(e);
               }
-              for (const me of toBeReplaced) {
-                createPlaceholder(me, request);
-              }
-            } catch (e) {
-              error(e);
-            }
-          }, 0);
-          let msg = `${exposedMime} blocked by NoScript`;
-          log(msg);
+            }, 0);
+            log(msg);
+          }
+          blockedCodecs.add(mime);
           throw new Error(msg);
         }
-
         return unpatched.get(MediaSourceProto).addSourceBuffer.call(ms, mime, ...args);
       });
     });

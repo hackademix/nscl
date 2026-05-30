@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -25,24 +25,13 @@
 
 var DocStartInjection = (() => {
   const MSG_ID = "__DocStartInjection__";
-  const repeating = !("contentScripts" in browser);
-  const mv3Callbacks = repeating && !browser.tabs.executeScript; // mv3 on Chrome
+  const isGecko = "contentScripts" in browser;
+  const mv3Callbacks = !browser.tabs.executeScript; // mv3 on Chrome
+  const isMv3Callback = script => typeof script == "object" && ("data" in script || "callback" in script || "assign" in script);
 
   let scriptBuilders = new Set();
   let getId = ({requestId, tabId, frameId, url}) => requestId || `${tabId}:${frameId}:${url}`;
   let pending = new Map();
-
-  function onMessage(msg, sender) {
-    let payload = msg[MSG_ID];
-    if (!payload) return;
-    let {id, tabId, frameId, url} = payload;
-    let ret = false;
-    if (tabId === sender.tab.id && frameId === sender.frameId && url === sender.url) {
-      end(payload, true);
-      ret = true;
-    }
-    return Promise.resolve(ret);
-  }
 
   async function begin(request) {
     let scripts = new Set();
@@ -62,7 +51,7 @@ var DocStartInjection = (() => {
         script = await buildScript({tabId, frameId, cookieStoreId, url, type});
         if (!script) return;
         if (mv3Callbacks) {
-          if (typeof script !== "object") {
+          if (!isMv3Callback(script)) {
             throw new Error('On MV3 only {data: jsonObject, callback: "globalFunctionName", assign: "globalScopeVarName"} injection can work!')
           }
           const {data, callback, assign} = script;
@@ -73,7 +62,26 @@ var DocStartInjection = (() => {
           });
           return;
         }
+
         // mv2
+        if (isMv3Callback(script)) {
+          // convert mv3-style callback to mv2
+          script = `
+            const {data, callback, assign} = ${JSON.stringify(script)};
+            if (assign && !(assign in globalThis)) {
+              globalThis[assign] = data;
+            }
+            if (callback) {
+              let cb = globalThis[callback];
+              if (typeof cb == "function") {
+                cb.call(globalThis, data);
+              } else {
+                console.warn(\`callback globalThis.${script.callback} is not a function.\`);
+              }
+            }
+         `;
+        }
+
         scripts.add(`try {
           ${typeof script === "function" ? `(${script})();` : script}
           } catch (e) {
@@ -90,88 +98,59 @@ var DocStartInjection = (() => {
       return;
     }
 
-    let id = getId(request);
+    const id = getId(request);
 
-    if (repeating) {
-      let injectionId = `injection:${uuid()}:${await sha256(Math.random().toString(16))}`;
-      let args = mv3Callbacks ?
-      // mv3 browser.scripting.executeScript()
-      {
-        func: (url, injectionId, scripts) => {
-          if (document.readyState === "complete" ||
-              window[injectionId] ||
-              document.URL !== url
-          ) return window[injectionId];
-          window[injectionId] = true;
-          for (s of scripts) {
-            const {callback, assign, data} = s;
-            try {
-              if (assign && !(assign in globalThis)) {
-                globalThis[assign] = data;
-              }
-              if (callback) {
-                let cb = globalThis[callback];
-                if (typeof cb == "function") {
-                  cb.call(globalThis, data);
-                } else {
-                  console.warn(`callback globalThis.${callback} is not a function (${cb}).`);
-                }
-              }
-            } catch (e) {
-              console.error(`Error in DocStartInjection script ${JSON.stringify(s)}`, e);
+    const injectionId = `injection:${uuid()}:${await sha256(Math.random().toString(16))}`;
+    const args = mv3Callbacks ?
+    // mv3 browser.scripting.executeScript()
+    {
+      func: (url, injectionId, scripts) => {
+        if (document.readyState === "complete" ||
+            window[injectionId] ||
+            document.URL !== url
+        ) return window[injectionId];
+        window[injectionId] = true;
+        for (s of scripts) {
+          const {data, callback, assign}  = s;
+          try {
+            if (assign && !(assign in globalThis)) {
+              globalThis[assign] = data;
             }
+            if (callback) {
+              let cb = globalThis[callback];
+              if (typeof cb == "function") {
+                cb.call(globalThis, data);
+              } else {
+                console.warn(`callback globalThis.${callback} is not a function (${cb}).`);
+              }
+            }
+          } catch (e) {
+            console.error(`Error in DocStartInjection script ${JSON.stringify(s)}`, e);
           }
-          return document.readyState === "loading";
-        },
-        args: [url, injectionId, [...scripts]],
-        target: documentId ? {tabId, documentIds: [documentId] } : {tabId, frameIds: [frameId]},
-        injectImmediately: true,
-      } :
-      // mv2 browser.tabs.executeScript()
-      {
-        code: `(() => {
-          let injectionId = ${JSON.stringify(injectionId)};
-          if (document.readyState === "complete" ||
-              window[injectionId] ||
-              document.URL !== ${JSON.stringify(url)}
-          ) return window[injectionId];
-          window[injectionId] = true;
-          ${[...scripts].join("\n")}
-          return document.readyState === "loading";
-        })();`,
-        runAt: "document_start",
-        frameId,
-      };
-      pending.set(id, args);
-      await run(request, true);
-    } else {
-      let matches = [url];
-      try {
-        let urlObj = new URL(url);
-        if (urlObj.port) {
-          urlObj.port = "";
-          matches[0] = urlObj.toString();
         }
-      } catch (e) {}
-
-      let ackMsg = JSON.stringify({
-        [MSG_ID]: {id, tabId, frameId, url}
-      });
-      scripts.add(`if (document.readyState !== "complete") browser.runtime.sendMessage(${ackMsg});`);
-
-      let options = {
-        js: [...scripts].map(code => ({code})),
-        runAt: "document_start",
-        matchAboutBlank: true,
-        matches,
-        allFrames: true,
-      };
-      let current = pending.get(id);
-      if (current) {
-        current.unregister();
-      }
-      pending.set(id, await browser.contentScripts.register(options));
-    }
+        return document.readyState === "loading";
+      },
+      args: [url, injectionId, [...scripts]],
+      target: documentId ? {tabId, documentIds: [documentId] } : {tabId, frameIds: [frameId]},
+      injectImmediately: true,
+    } :
+    // mv2 browser.tabs.executeScript()
+    {
+      code: `(() => {
+        let injectionId = ${JSON.stringify(injectionId)};
+        if (document.readyState === "complete" ||
+            window[injectionId] ||
+            document.URL !== ${JSON.stringify(url)}
+        ) return window[injectionId];
+        window[injectionId] = true;
+        ${[...scripts].join("\n")}
+        return document.readyState === "loading";
+      })();`,
+      runAt: "document_start",
+      frameId,
+    };
+    pending.set(id, args);
+    await run(request, true);
   }
 
   async function run(request, repeat = false) {
@@ -227,27 +206,20 @@ var DocStartInjection = (() => {
     debug(`DocStartInjection at ${url}, ${attempts} attempts, success = ${success}, repeat = ${repeat}.`);
   }
 
-  function end(request, immediate = false) {
-    let id = getId(request);
-    let script = pending.get(id);
+  function end(request) {
+    const id = getId(request);
+    const script = pending.get(id);
     if (script) {
-      if (repeating) {
-        run(request, false);
-      } else {
-        pending.delete(id);
-        if (immediate) {
-          script.unregister();
-        } else {
-          setTimeout(() => script.unregister(), 500);
-        }
-      }
+      // last attempt
+      run(request, false);
     }
   }
 
   let listeners = {
     onBeforeNavigate: begin,
-    onErrorOccurred: end,
-    onCompleted: end,
+    onDomContentLoaded: end,
+    onErrorOccurred: end, // wr & wn
+    onCompleted: end, // wr & wn
   }
 
   function listen(enabled) {
@@ -260,21 +232,17 @@ var DocStartInjection = (() => {
         event[method].apply(event, enabled ? [listener, ...args] : [listener]);
       }
     }
-    if (repeating) {
-      // Just Chromium
-      setup(webRequest, "onResponseStarted", begin, reqFilter);
-    } else {
+
+    setup(webRequest, "onResponseStarted", begin, reqFilter);
+    if (isGecko) {
       // add or remove Firefox's webNavigation listeners for non-http loads
-      // and asynchronous blocking onHeadersReceived for registration on http
       let navFilter = enabled && {url: [{schemes: ["file", "ftp"]}]};
       for (let [eventName, listener] of Object.entries(listeners)) {
-        setup(webNavigation, eventName, listener, navFilter)
+        setup(webNavigation, eventName, listener, navFilter);
       }
-      setup(webRequest, "onHeadersReceived", begin, reqFilter, ["blocking"]);
-      browser.runtime.onMessage[method](onMessage);
     }
 
-    // add or remove common webRequest listener
+    // add or remove common webRequest listeners
     for (let [eventName, listener] of Object.entries(listeners)) {
        setup(webRequest, eventName, listener, reqFilter);
     }

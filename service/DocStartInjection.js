@@ -157,7 +157,7 @@ var DocStartInjection = (() => {
     const id = getId(request);
     const args = pending.get(id);
     if (!args) return;
-    let {url, tabId} = request;
+    const {url, tabId, frameId} = request;
     let attempts = 0;
     let success = false;
     const execute = mv3Callbacks ?
@@ -169,12 +169,13 @@ var DocStartInjection = (() => {
        const ret = await browser.tabs.executeScript(tabId, args);
        return ret[0];
     };
+    const TIMEOUT = 3 * 60000 + Date.now();
     for (; pending.has(id);) {
       attempts++;
       try {
         if (attempts % 1000 === 0) {
-          let tab = await browser.tabs.get(request.tabId);
-          if (tab.url !== url) {
+          const tab = await browser.tabs.get(tabId);
+          if (request.type == "main_frame" && tab.url != url) {
             console.error(`Tab mismatch: ${tab.url} <> ${url} (download-triggered?)`);
             break;
           }
@@ -185,25 +186,39 @@ var DocStartInjection = (() => {
           break;
         }
       } catch (e) {
-        if (/No tab\b/.test(e.message)) {
+        if (/(?:No|Invalid) tab\b/.test(e.message)) {
+          console.error(e);
           break;
         }
-        if (!/\baccess\b/.test(e.message)) {
-          console.error(e.message);
+        if (!/\baccess|permission\b/.test(e.message)) {
+          console.error(e);
         }
-        if (!browser.tabs.executeScript && e.message != "Frame with ID 0 was removed.") {
+        try {
+          const frame = await browser.webNavigation.getFrame({tabId: request.tabId, frameId: request.frameId});
+          if (frame.url == url) {
+            console.error(`Can't inject correctly targeted page at tab ${tabId}, frame ${frameId}, url ${url}. Maybe PDF or other privileged renderer? Giving up!`, e);
+            break;
+          }
+        } catch (e) {
+          console.error(`Error looking for url ${url} at frame ${frameId} / tab ${tabId}`, e);
+        }
+        if (args.target && e.message != "Frame with ID 0 was removed.") {
           console.error(`MV3 fatality, cannot script tab ${tabId}! ${JSON.stringify(args)}`);
           break;
         }
         if (attempts % 1000 === 0) {
           console.error(`DocStartInjection at ${url} ${attempts} failed attempts`, e);
+          if (Date.now() > TIMEOUT) {
+            console.log("DocStartInjection timeout!");
+            break;
+          }
         }
       } finally {
         if (!repeat) break;
       }
     }
     pending.delete(id);
-    debug(`DocStartInjection at ${url}, ${attempts} attempts, success = ${success}, repeat = ${repeat}.`);
+    debug(`DocStartInjection at ${url} (tabId: ${tabId}, frameId: ${frameId}), ${attempts} attempts, success = ${success}, repeat = ${repeat}.`);
   }
 
   function end(request) {

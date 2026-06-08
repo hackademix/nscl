@@ -148,6 +148,7 @@ var DocStartInjection = (() => {
       })();`,
       runAt: "document_start",
       frameId,
+      matchAboutBlank: true, // prevent missing host permissions error on transition
     };
     pending.set(id, args);
     await run(request, true);
@@ -170,6 +171,7 @@ var DocStartInjection = (() => {
        return ret[0];
     };
     const TIMEOUT = 3 * 60000 + Date.now();
+    let checkingFrame;
     for (; pending.has(id);) {
       attempts++;
       try {
@@ -193,15 +195,20 @@ var DocStartInjection = (() => {
         if (!/\baccess|permission\b/.test(e.message)) {
           console.error(e);
         }
-        try {
-          const frame = await browser.webNavigation.getFrame({tabId: request.tabId, frameId: request.frameId});
-          if (frame.url == url) {
-            console.error(`Can't inject correctly targeted page at tab ${tabId}, frame ${frameId}, url ${url}. Maybe PDF or other privileged renderer? Giving up!`, e);
-            break;
-          }
-        } catch (e) {
-          console.error(`Error looking for url ${url} at frame ${frameId} / tab ${tabId}`, e);
-        }
+
+        checkingFrame ||=
+          (async () => {
+            try {
+              const frame = await browser.webNavigation.getFrame({tabId: request.tabId, frameId: request.frameId});
+              if (frame.url == url) {
+                console.error(`Can't inject correctly targeted page at tab ${tabId}, frame ${frameId}, url ${url}. Maybe PDF or other privileged renderer? Giving up!`, e);
+                pending.delete(id);
+              }
+            } catch (e) {
+              console.error(`Error looking for url ${url} at frame ${frameId} / tab ${tabId}`, e);
+            }
+          })();
+
         if (args.target && e.message != "Frame with ID 0 was removed.") {
           console.error(`MV3 fatality, cannot script tab ${tabId}! ${JSON.stringify(args)}`);
           break;

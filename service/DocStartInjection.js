@@ -223,13 +223,6 @@ var DocStartInjection = (() => {
           console.error(`Can't inject correctly targeted page at tab ${tabId}, frame ${frameId}, url ${url}. Maybe PDF or other privileged renderer? Giving up!`, e);
           break;
         }
-        if (attempts % 1000 === 0) {
-          console.error(`DocStartInjection at ${url} ${attempts} failed attempts`, e);
-          if (Date.now() > TIMEOUT) {
-            console.log("DocStartInjection timeout!");
-            break;
-          }
-        }
       } finally {
         if (!repeat) break;
       }
@@ -257,7 +250,7 @@ var DocStartInjection = (() => {
   function listen(enabled) {
     let {webNavigation, webRequest} = browser;
     let method = `${enabled ? "add" : "remove"}Listener`;
-    let reqFilter =  {urls: ["<all_urls>"], types:  ["main_frame", "sub_frame", "object"]};
+    let reqFilter =  {urls: ["<all_urls>"], types:  ["main_frame", "sub_frame"]};
     function setup(api, eventName, listener, ...args) {
       let event = api[eventName];
       if (event) {

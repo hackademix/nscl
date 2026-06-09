@@ -182,7 +182,10 @@ var DocStartInjection = (() => {
             console.error(`Tab mismatch: ${tab.url} <> ${url} (download-triggered?)`);
             break;
           }
-          console.error(`DocStartInjection at ${url} ${attempts} failed attempts so far...`);
+          if (Date.now() > TIMEOUT) {
+            console.log("DocStartInjection timeout!");
+            break;
+          }
         }
         if (await execute()) {
           success = true;

@@ -193,6 +193,13 @@ var DocStartInjection = (() => {
           console.error(e);
           break;
         }
+        if (args.target) {
+          if (e.message == "Frame with ID 0 was removed.") {
+            continue;
+          }
+          console.error(`MV3 fatality, cannot script target! ${JSON.stringify(args)}`);
+          break;
+        }
         if (!/\baccess|permission\b/.test(e.message)) {
           console.error(e);
         }
@@ -211,11 +218,6 @@ var DocStartInjection = (() => {
           })();
         if (isTargetedPage) {
           console.error(`Can't inject correctly targeted page at tab ${tabId}, frame ${frameId}, url ${url}. Maybe PDF or other privileged renderer? Giving up!`, e);
-          break;
-        }
-
-        if (args.target && e.message != "Frame with ID 0 was removed.") {
-          console.error(`MV3 fatality, cannot script tab ${tabId}! ${JSON.stringify(args)}`);
           break;
         }
         if (attempts % 1000 === 0) {

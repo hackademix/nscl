@@ -183,7 +183,12 @@ if (globalThis.Worlds?.main) {
         observer.observe(win.document, { subtree: true, childList: true });
         const patchHandler = {
           apply(target, thisArg, args) {
-            const ret = Reflect.apply(target, thisArg, args);
+            let ret;
+            try {
+              ret = Reflect.apply(target, thisArg, args);
+            } catch(e) {
+              console.error("Error calling proxied sink method", target, thisArg, args, e);
+            }
             const wrapped = thisArg && xray.wrap(thisArg);
             if (wrapped) {
               try {

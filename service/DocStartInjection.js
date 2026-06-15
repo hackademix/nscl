@@ -29,9 +29,9 @@ var DocStartInjection = (() => {
   const mv3Callbacks = !browser.tabs.executeScript; // mv3 on Chrome
   const isMv3Callback = script => typeof script == "object" && ("data" in script || "callback" in script || "assign" in script);
 
-  let scriptBuilders = new Set();
-  let getId = ({requestId, tabId, frameId, url}) => requestId || `${tabId}:${frameId}:${url}`;
-  let pending = new Map();
+  const scriptBuilders = new Set();
+  const getId = ({requestId, tabId, frameId, url}) => requestId || `${tabId}:${frameId}:${url}`;
+  const pending = new Map()
 
   async function begin(request) {
     let scripts = new Set();
@@ -45,6 +45,11 @@ var DocStartInjection = (() => {
     if (documentLifecycle == "prerender" && frameType == "outmostframe") {
       debug("Prerendering top frame", tabId, frameId, url); // DEV_ONLY
     }
+
+    const id = getId(request);
+    // We put a null placeholder here rather than later in the async part in order to avoid races with end()
+    pending.set(id, null);
+
     await Promise.allSettled([...scriptBuilders].map(async buildScript => {
       let script;
       try {
@@ -98,8 +103,6 @@ var DocStartInjection = (() => {
       return;
     }
 
-    const id = getId(request);
-
     const injectionId = `injection:${uuid()}:${await sha256(Math.random().toString(16))}`;
     const args = mv3Callbacks ?
     // mv3 browser.scripting.executeScript()
@@ -150,8 +153,10 @@ var DocStartInjection = (() => {
       frameId,
       matchAboutBlank: true, // prevent missing host permissions error on transition
     };
+
+    const repeat = pending.has(id); // don't repeat if already cleared by end()
     pending.set(id, args);
-    await run(request, true);
+    await run(request, repeat);
   }
 
   async function run(request, repeat = false) {
@@ -237,6 +242,8 @@ var DocStartInjection = (() => {
     if (script) {
       // last attempt
       run(request, false);
+    } else {
+      pending.delete(id);
     }
   }
 

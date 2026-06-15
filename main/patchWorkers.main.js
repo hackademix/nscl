@@ -277,9 +277,9 @@
       });
 
     port?.postMessage({
-        type: "propagate",
-        modifyContext: modifyContext.toString(),
-      });
+      type: "propagate",
+      modifyContext: modifyContext.toString(),
+    });
 
     // patch Worker & SharedWorker
     const baseURI = globalThis.document?.baseURI || location.href;
@@ -302,7 +302,7 @@
         return createPatched(target, args);
       }
 
-      if (/^(?:data|blob):/.test(url.protocol) || !isWorker) {
+      if (/^(?:data|blob):/.test(url.protocol)) {
 
         // Inline patching
 
@@ -405,22 +405,30 @@
       if (globalThis.Worklet) {
         const { prototype } = globalThis.Worklet;
         const { addModule } = prototype;
-        exportFunction(function(...args) {
+        exportFunction(function (...args) {
           return handlePatch(
-           (target, args) => {
+            (target, args) => {
               console.debug("Worklet creation", target, args, this); // DEV_ONLY
               if (/^(?:data|blob):/.test(args[0])) {
                 return addModule.apply(this, args);
               }
-              const p = new w.Promise((resolve, reject) => {
-                failSafe.add(args[0]).then(
-                  () => {
-                    resolve(addModule.apply(this, args));
-                  },
-                  () => resolve()
-                );
-              });
-              return p;
+
+              // Synthetic thenable work-around for xray breaking consumers of Promise objects
+              // with `Permission denied to access property "then"`)
+              // TODO:
+              // 1. double check error propagation for failed loads
+              // 2. Check remote patching on Chromium
+              let p = {
+                then: (resolve, reject) => {
+                 failSafe.add(args[0]).then(
+                    () => addModule.apply(this, args),
+                    e => {
+                      console.error(e); // do not propagate failSafe failure
+                    }
+                  );
+                }
+              };
+              return xray.forPage(p);
             },
             this,
             args

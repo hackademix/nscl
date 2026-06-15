@@ -89,7 +89,7 @@
 
       const patchInfo = updatePatch(patch, tabId, documentUrl, url);
 
-      return init(tab.id, url, patchInfo);
+      return Promise.resolve(init(tab.id, url, patchInfo));
     } catch (e) {
       console.error("Error on __patchWorkers__ message", e);
       return Promise.reject(e);

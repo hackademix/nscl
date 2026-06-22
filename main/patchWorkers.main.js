@@ -418,23 +418,29 @@
               if (/^(?:data|blob):/.test(args[0])) {
                 return addModule.apply(this, args);
               }
-
+              const patching = failSafe.add(args[0]).then(
+                () => {
+                  return addModule.apply(this, args);
+                },
+                e => {
+                   console.error(e);
+                   // do not propagate failSafe failure
+                }
+               );
               // Synthetic thenable work-around for xray breaking consumers of Promise objects
               // with `Permission denied to access property "then"`)
-              // TODO:
-              // 1. double check error propagation for failed loads
-              // 2. Check remote patching on Chromium
-              let p = {
+              const addingModule = {
                 then: (resolve, reject) => {
-                 failSafe.add(args[0]).then(
-                    () => addModule.apply(this, args),
-                    e => {
-                      console.error(e); // do not propagate failSafe failure
-                    }
-                  );
+                  return patching.then(resolve, reject);
+                },
+                catch (reject) {
+                  return this.then(undefined, reject);
+                },
+                finally(resolve) {
+                  return this.then(resolve);
                 }
               };
-              return xray.forPage(p);
+              return xray.forPage(addingModule);
             },
             this,
             args

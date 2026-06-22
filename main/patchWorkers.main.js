@@ -167,6 +167,12 @@
     };
     return {
       add(url) {
+        // always use an absolute URL, because it's what ok() and cancel() will get
+        try {
+          url = (new URL(url, document.baseURI)).href;
+        } catch (e) {
+          console.error(`Could not resolve ${url} to an absolute URL!`);
+        }
         return getResolver(url).promise;
       },
       ok(url) {

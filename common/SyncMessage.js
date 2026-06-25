@@ -656,5 +656,75 @@ if (!["onSyncMessage", "sendSyncMessage"].some((m) => browser.runtime[m])) {
       }
       return result.payload;
     };
+
+    if (window.wrappedJSObject) {
+      // Patch MutationObserver to avoid re-entrancy issues when performing XHR on Firefox
+      let isProcessingSync = false;
+      const observerQueue = [];
+
+      const EVENT = {};
+      for (const id of ["START", "END"]) {
+        EVENT[id] = browser.extension.getURL(`NSCL::onSyncMessageEvent.${id}`);
+      }
+      addEventListener(
+        EVENT.START,
+        (e) => {
+          isProcessingSync = true;
+        },
+        true,
+      );
+      addEventListener(
+        EVENT.END,
+        (e) => {
+          isProcessingSync = false;
+          queueMicrotask(() => {
+            let task;
+            while ((task = observerQueue.shift())) {
+              try {
+                task();
+              } catch (e) {
+                console.error(e);
+              }
+            }
+          });
+        },
+        true,
+      );
+
+      const { MutationObserver } = window.wrappedJSObject;
+      const wrappedMutationObserver = function (callback) {
+        // Use exportFunction to ensure the page can invoke your callback safely
+        const safeCallback = exportFunction((mutations, observer) => {
+          if (isProcessingSync) {
+            observerQueue.push(() => callback(mutations, observer));
+          } else {
+            callback(mutations, observer);
+          }
+        }, window);
+
+        // Return an instance of the native MutationObserver from the page's window
+        return new MutationObserver(safeCallback);
+      };
+
+      exportFunction(wrappedMutationObserver, window, {
+        defineAs: "MutationObserver",
+      });
+
+      if (parent !== window && document.URL == "about:blank") {
+        const { sendSyncMessage } = browser.runtime;
+        browser.runtime.sendSyncMessage = (msg) => {
+          try {
+            parent.dispatchEvent(new CustomEvent(EVENT.START));
+          } catch (e) {
+            console.error(e); // SOP issue?
+          }
+          try {
+            return sendSyncMessage(msg);
+          } finally {
+            parent.dispatchEvent(new CustomEvent(EVENT.END));
+          }
+        };
+      }
+    }
   }
 }

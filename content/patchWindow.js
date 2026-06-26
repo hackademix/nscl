@@ -396,7 +396,13 @@ function patchWindow(patchingCallback, env = {}) {
         }
       }
       let des = getSafeDescriptor(proto, method, accessor);
-      des[accessor] = exportFunction(new Proxy(des[accessor], patchHandler), proto, {defineAs: `${accessor} ${method}`});;
+      des[accessor] = exportFunction(
+        new Proxy(des[accessor], patchHandler),
+        proto,
+        {
+          defineAs: accessor == "value" ? method : `${accessor} ${method}`
+        }
+      );
       Reflect.defineProperty(xray.unwrap(proto), method, des);
     }
 

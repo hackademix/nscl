@@ -88,7 +88,7 @@ globalThis.Scripting ||= (() => {
       return await browser.scripting.executeScript(fixDefaults(details));
     },
     async insertCSS(details) {
-      return await browser.scripting.insertCSS(fixDefaults(details));
+      return await browser.scripting.insertCSS(fixDefaults(details, true));
     },
   }
   : {

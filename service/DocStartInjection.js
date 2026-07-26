@@ -37,7 +37,7 @@ var DocStartInjection = (() => {
     let scripts = new Set();
     let {tabId, frameId, cookieStoreId, url, type, documentId, documentLifecycle, frameType} = request;
 
-    if (tabId < 0 || !/^(?:(?:https?|ftp|data|blob|file):|about:blank$)/.test(url)) return;
+    if (tabId < 0 || !/^(?:(?:https?|ftp|data|blob|file):|about:blank\b)/.test(url)) return;
 
     if (!type && frameId == 0) {
       type = "main_frame"; // Gecko uses webNavigation.onBeforeNavigate, no request type

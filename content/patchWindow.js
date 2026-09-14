@@ -374,7 +374,7 @@ function patchWindow(patchingCallback, env = {}) {
         "insertAdjacentElement", "insertAdjacentHTML", "insertBefore",
         "prepend",
         "replaceChildren", "replaceWith", "replaceChild",
-        "setHTML",
+        "setHTML", "setHTMLUnsafe",
       ],
       Document: [
         "append", "prepend", "replaceChildren",

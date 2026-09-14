@@ -224,7 +224,7 @@ if (globalThis.Worlds?.main) {
             "insertAdjacentElement", "insertAdjacentHTML", "insertBefore",
             "prepend",
             "replaceChildren", "replaceWith", "replaceChild",
-            "setHTML",
+            "setHTML", "setHTMLUnsafe",
           ],
           Document: [
             "append", "prepend", "replaceChildren",

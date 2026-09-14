@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -294,8 +294,13 @@
         return handlePatch(constructWorker, target, args);
       }
     };
+    const sharedWorkerHandler = {
+      construct(target, args) {
+        return handlePatch(constructWorker, target, args, /* isServiceOrShared */ true);
+      }
+    };
 
-    const handlePatch = (createPatched, target, args) => {
+    const handlePatch = (createPatched, target, args, isServiceOrShared = false) => {
       const isWorker = createPatched == constructWorker;
       // string coercion may have side effects, let's clear it up immediately
       args._originalURL = args[0];
@@ -393,7 +398,7 @@
         return createPatched(target, args);
       }
       url = url.href;
-      patchRemoteWorkerScript(url, xray.unwrap(target) === w.SharedWorker);
+      patchRemoteWorkerScript(url, isServiceOrShared);
       const isWorklet = createPatched != constructWorker;
       console.debug(`Patching remote ${isWorklet ? "worklet" : "worker"}`, url); // DEV_ONLY
       const worker = createPatched(target, args);
@@ -405,9 +410,8 @@
       // nested, just proxy Worker
       globalThis.Worker = new Proxy(Worker, workerHandler);
     } else {
-      for (const clazz of ["Worker", "SharedWorker"]) {
-        xray.proxify(clazz, workerHandler);
-      }
+      xray.proxify("Worker", workerHandler);
+      xray.proxify("SharedWorker", sharedWorkerHandler);
       if (globalThis.Worklet) {
         const { prototype } = globalThis.Worklet;
         const { addModule } = prototype;

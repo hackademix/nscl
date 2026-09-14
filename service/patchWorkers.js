@@ -1,7 +1,7 @@
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -130,7 +130,7 @@
       let patchInfo = byOrigin?.get(documentUrl);
       if (!patchInfo?.urls.has(url)) {
         // account for nested workers
-        patchInfo = byOrigin.get(originUrl);
+        patchInfo = byOrigin?.get(originUrl);
         if (!patchInfo) {
           if (tabId == -1) {
             return;

@@ -61,7 +61,7 @@
     () => !p1.can("https://192.168.69.1"),
     () => !p1.can("https://10.0.0.1"),
     () => p1.can("http://192.168.1.2"),
-    () => !p1.can("http://192.168.1.2.suffix");
+    () => !p1.can("http://192.168.1.2.suffix"),
     () => p1.can("http://some.onion"),
     () => !p1.can("http://evil.com"),
     () => !p1.can("https://facebook.net"),

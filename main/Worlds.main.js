@@ -229,7 +229,13 @@ if (globalThis.Worlds?.main) {
           Document: [
             "append", "prepend", "replaceChildren",
             "write", "writeln",
-          ]
+          ],
+          CharacterData: [
+            "after", "before", "replaceWith",
+          ],
+          Range: [
+            "insertNode", "surroundContents",
+          ],
         };
 
         function patch(proto, method) {

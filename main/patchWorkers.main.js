@@ -408,7 +408,7 @@
     // Intercept worker constructors
     if (!xray) {
       // nested, just proxy Worker
-      globalThis.Worker = new Proxy(Worker, workerHandler);
+      globalThis.Worker = globalThis.Worker.prototype.constructor = new Proxy(Worker, workerHandler);
     } else {
       xray.proxify("Worker", workerHandler);
       xray.proxify("SharedWorker", sharedWorkerHandler);

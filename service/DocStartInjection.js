@@ -205,7 +205,7 @@ var DocStartInjection = (() => {
           if (e.message == "Frame with ID 0 was removed.") {
             continue;
           }
-          console.error(`MV3 fatality, cannot script target! ${JSON.stringify(args)}`);
+          console.error(`MV3 fatality, cannot script target! ${JSON.stringify(args)}`, e); // DEV_ONLY
           break;
         }
         if (!/\baccess|permission\b/.test(e.message)) {

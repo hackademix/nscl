@@ -58,29 +58,13 @@
       }
       let f = h[name];
       if (typeof f === "function") {
-        let result;
-        try {
-          result = f(msg, sender);
-        } catch (e) {
-          error(e);
-          exception = e;
-          continue;
-        }
-        if (typeof result === "undefined") {
-          responderFound = true;
-          continue;
-        }
-        return Promise.resolve(result);
+        return Promise.resolve(Messages.wakening).then(() => f(msg, sender));
       }
     }
-    if (exception) throw exception;
-    if (!responderFound) {
-      debug("Warning: no handler for message %s%s %s in context %s", namespace, name, JSON.stringify(msg), document.URL);
-    }
+    debug(`Warning: no Messages handler for ${namespace}.${name}(${JSON.stringify(msg)}) in ${document.URL}`); // DEV_ONLY
   };
 
-  const dispatch = async (...args) => {
-    await Messages.wakening;
+  const dispatch = (...args) => {
     try {
       const ret = dispatchImmediate(...args);
       console.debug("Returning %o from Messages dispatch", ret, args); // DEV_ONLY

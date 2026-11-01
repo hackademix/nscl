@@ -78,18 +78,90 @@
     // account for nested workers
     byOrigin.set(url, patchInfo);
     return patchInfo;
+  };
+
+  const findStaticImportScheme = async (source) => {
+    await include("/nscl/lib/acorn.js");
+
+    let scheme = null;
+    let ast;
+    try {
+      ast = acorn.parse(source, {
+        ecmaVersion: "latest",
+        sourceType: "module"
+      });
+    } catch (e) {
+      // Don't guess if the source cannot be parsed.
+      return scheme;
+    }
+
+
+    for (const node of ast.body) {
+      switch (node.type) {
+        case "ImportDeclaration":
+        case "ExportNamedDeclaration":
+        case "ExportAllDeclaration":
+          break;
+        default:
+          continue;
+      }
+
+      const specifier = node.source.value;
+      const match = /^(data|blob):/i.exec(specifier);
+
+      if (!match) continue;
+
+      scheme = match[1].toLowerCase();
+
+      if (scheme == "data") {
+        break;
+      }
+    }
+
+    return scheme;
   }
 
+  const mergePatch = async (patch, body, { tabId, origin }) => {
+    if (/\b(?:im|ex)port\b/.test(body)) {
+      const scheme = globalThis.PATCHWORKERS_DEBUG_SCHEME || await findStaticImportScheme(body);
+      switch (scheme) {
+        case "blob":
+          try {
+            const blobUrl = await browser.tabs.sendMessage(tabId,
+              {
+                __getWorkerPatch__: {
+                  origin,
+                  asBlobUrl: true,
+                  patch
+                },
+              },
+            );
+            if (blobUrl) {
+              patch = `import "${blobUrl}";`;
+              break;
+            }
+          } catch (e) {
+            console.error(e);
+          }
+          // fallback to data: if blobUrl can't be created for this origin
+        case "data":
+          patch = `import "data:text/javascript,${encodeURIComponent(patch)};";`;
+        break;
+      }
+    }
+    return patch.concat(body);
+  }
 
-  const workerCreationListener = ({__patchWorkers__}, {tab, url: documentUrl}) => {
+  const workerCreationListener =({__patchWorkers__}, sender) => {
     if (!__patchWorkers__) return;
+    const { tab, frameId, url: documentUrl } = sender;
     try {
       const {url, patch, isServiceOrShared} = __patchWorkers__;
       const tabId = isServiceOrShared && !chrome.debugger ? -1 : tab.id;
 
       const patchInfo = updatePatch(patch, tabId, documentUrl, url);
 
-      return Promise.resolve(init(tab.id, url, patchInfo));
+      return Promise.resolve(init(tab.id, frameId, url, patchInfo)).then(r => "ready");
     } catch (e) {
       console.error("Error on __patchWorkers__ message", e);
       return Promise.reject(e);
@@ -153,16 +225,35 @@
       }
 
       console.debug(`Patching ${type}`, requestId, url, documentUrl); // DEV_ONLY REMOVEME
-      let filter = browser.webRequest.filterResponseData(requestId);
+      const filter = browser.webRequest.filterResponseData(requestId);
+      const chunks = []
       filter.onstart = () => {
         console.debug("filter.onstart", requestId, patchInfo.patch);  // DEV_ONLY REMOVEME
         filter.write(new TextEncoder().encode(patchInfo.patch));
       };
-      filter.ondata = e => {
-        filter.write(e.data);
+      filter.ondata = ({data}) => {
+        chunks.push(data);
       };
-      filter.onstop = () => {
-        filter.close();
+      filter.onstop = async () => {
+        try {
+          const size = chunks.reduce((n, chunk) => n + chunk.byteLength, 0);
+          const sourceBytes = new Uint8Array(size);
+          let offset = 0;
+
+          for (const chunk of chunks) {
+            sourceBytes.set(new Uint8Array(chunk), offset);
+            offset += chunk.byteLength;
+          }
+
+          const origin = new URL(url).origin;
+          const body = await mergePatch(patchInfo.patch, new TextDecoder().decode(sourceBytes), { tabId, origin });
+          filter.write(new TextEncoder().encode(body));
+        } catch (e) {
+          console.error("Cannot patch worker response", e);
+          filter.disconnect();
+        } finally {
+          filter.close();
+        }
       };
     }, {
       urls: ["<all_urls>"],
@@ -181,6 +272,16 @@
     }
 
     const dbg = chrome.debugger;
+
+    const fetchParams = {
+      patterns: [
+        {
+          resourceType: "Other",
+          requestStage: "Response",
+        },
+      ]
+    };
+
 
     debugging = new Map();
     debugging.dispose = async function(tabId) {
@@ -203,6 +304,16 @@
       }
 
       switch (method) {
+        case "Target.attachedToTarget":
+          if (dbgInfo.notifyFrameAttached) {
+            dbgInfo.notifyFrameAttached();
+            delete dbgInfo.notifyFrameAttached;
+          }
+          const target = { tabId: source.tabId, sessionId: params.sessionId };
+          await dbg.sendCommand(target, "Fetch.enable", fetchParams);
+          await dbg.sendCommand(target, "Network.enable");
+          await dbg.sendCommand(target, "Runtime.runIfWaitingForDebugger");
+        break;
         case "Network.requestWillBeSent":
           if (params.type == "Script" || params.type == "Other") {
             dbgInfo.requests.set(params.requestId, params.initiator.url);
@@ -229,16 +340,7 @@
 
     // Section 2, run from now on
 
-    const fetchParams = {
-      patterns: [
-        {
-          resourceType: "Other",
-          requestStage: "Response",
-        },
-      ]
-    };
-
-    return await (init = async (tabId, url, {patch}) => {
+    return await (init = async (tabId, frameId, url, { patch }) => {
       const target = { tabId };
       let dbgInfo = await debugging.get(tabId);
       if (!dbgInfo) {
@@ -251,6 +353,14 @@
               // might just be because we're already attached
               console.error(e);
             }
+            await dbg.sendCommand(target, "Target.setAutoAttach", {
+              autoAttach: true,
+              waitForDebuggerOnStart: true,
+              flatten: true,
+              filter: [
+                { type: "iframe", exclude: false }
+              ],
+            });
             await dbg.sendCommand(target, "Fetch.enable", fetchParams);
             await dbg.sendCommand(target, "Network.enable");
           } catch (e) {
@@ -285,17 +395,17 @@
                     this.patch(origin, codeChunks[0]);
                   }
                   const code = [...new Set(codeChunks)].join(";");
-
                   if (code) {
                     const response = await dbg.sendCommand(source, "Fetch.getResponseBody", { requestId });
-                    const body = code.concat(
-                      response.base64Encoded ? atob(response.body) : response.body);
+                    let body = response.base64Encoded ? atob(response.body) : response.body;
+                    body = await mergePatch(code, body, { tabId: source.tabId, origin });
+                    body = btoa(unescape(encodeURIComponent(body)));
                     await dbg.sendCommand(source, "Fetch.fulfillRequest", {
                       requestId,
                       responseHeaders,
                       responsePhrase: params.responseStatusText,
                       responseCode: params.responseStatusCode,
-                      body: btoa(unescape(encodeURIComponent(body)))
+                      body,
                     });
                     console.debug("Fetch: patched worker", params, { initiatorUrl, body }); // DEV_ONLY
                   }
@@ -332,6 +442,11 @@
         })();
         debugging.set(tabId, startingDebugger);
         dbgInfo = await startingDebugger;
+        if (frameId > 0) {
+          await new Promise(resolve => {
+            dbgInfo.notifyFrameAttached = resolve;
+          });
+        }
       }
       dbgInfo.patch(new URL(url).origin, patch);
     })(...args);

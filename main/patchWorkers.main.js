@@ -386,6 +386,13 @@
           `.replace(/^\s+/mg, '');
         let workerSrc = loadWorkerSrc();
         if (workerSrc !== null) {
+          if (args[1]?.type == "module") {
+            patch = `import "${
+              url.protocol == "data:"
+                ? `data:application/javascript,${encodeURIComponent(patch)}`
+                : createObjectURL(new Blob([patch], { type: "application/javascript" }))
+            }";`;
+          }
           args[0] = url.protocol === "data:"
             ? `data:application/javascript,${encodeURIComponent(`${patch};${workerSrc}`)}`
             : createObjectURL(new Blob([patch, ";\n", workerSrc], { type: "application/javascript" }));

@@ -29,7 +29,7 @@ globalThis.patchWorkers = (() => {
 
   const debugMonitor = `
     if (globalThis.addEventListener) for (const et of ['message', 'error', 'messageerror']) {
-      addEventListener(et, ev => {
+      globalThis.addEventListener(et, ev => {
         console.debug("Event in patched worker/worklet", globalThis, ev.type, ev.data);
       }, true);
     }`;
@@ -55,7 +55,14 @@ globalThis.patchWorkers = (() => {
   const joinPatches = () => wrap([...patches].join("\n"));
 
   browser.runtime.onMessage.addListener(({ __getWorkerPatch__ }) =>
-    __getWorkerPatch__ ? joinPatches() : undefined
+    __getWorkerPatch__?.origin == window.origin
+      ? Promise.resolve(
+        __getWorkerPatch__.asBlobUrl
+          ? URL.createObjectURL(new Blob([__getWorkerPatch__.patch || joinPatches()],
+            { type: "application/javascript" }))
+          : joinPatches()
+      )
+      : undefined
   );
 
 
@@ -89,7 +96,7 @@ globalThis.patchWorkers = (() => {
           const workerCreatedMsg = {
             __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
           };
-          browser.runtime.sendMessage(workerCreatedMsg).then(r => {
+          browser.runtime.sendMessage(workerCreatedMsg).then(async (r) => {
             port.postMessage({ type: "patchedUrl", url });
           }, e => {
             console.error(e, "Could not patch", url); // DEV_ONLY

@@ -47,6 +47,14 @@
         return;
       }
       addEventListener(${INIT_EVENT}, e => e.preventDefault(), true);
+      if (globalThis.FetchEvent) {
+        addEventListener("fetch", e => {
+          if (e.isTrusted && navigator.onLine &&
+              /work(?:er|let)$/.test(e.request.destination)) {
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      }
     }
     ${patch}
   })();

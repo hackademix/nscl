@@ -197,6 +197,7 @@
       let { documentUrl } = request;
       if (tabId == -1) {
         documentUrl = new URL(documentUrl).origin;
+        originUrl = new URL(originUrl).origin;
       }
 
       let patchInfo = byOrigin?.get(documentUrl);

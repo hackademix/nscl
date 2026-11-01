@@ -48,7 +48,7 @@ globalThis.DocumentFreezer = (() => {
       firedDOMContentLoaded = true;
       return;
     }
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     console.debug(`Suppressing ${e.type} on `, e.target); // DEV_ONLY
   }
 

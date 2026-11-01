@@ -144,7 +144,7 @@ var PlaceHolder = (() => {
       }
       if (ph) {
         ev.preventDefault();
-        ev.stopPropagation();
+        ev.stopImmediatePropagation();
         if (elements.some(e => e.value == "close")) {
           ph.close(replacement);
         } else {

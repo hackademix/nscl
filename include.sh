@@ -67,7 +67,8 @@ filter_inclusions "$TARGET" manifest.json $SERVICE_WORKER
 # include also references from nscl scripts already included
 [[ -d "$TARGET/nscl" ]] && filter_inclusions -q "$TARGET/nscl/"
 
-# auto-update TLDs if included
-"$BASE/update-tlds.sh" "$TARGET/nscl/common/tld.js"
-
+if ! [[ $UNPACKED_ONLY ]]; then
+  # auto-update TLDs if included
+  "$BASE/update-tlds.sh" "$TARGET/nscl/common/tld.js"
+fi
 exit 0

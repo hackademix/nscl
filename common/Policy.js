@@ -240,7 +240,7 @@ var Policy = (() => {
         const topCaps = topPerms.capabilities;
         let capsArray = [...perms.capabilities];
         if (what.permissions && perms == this.DEFAULT) {
-          capsArray = new Set(capsArray.concat([...topCaps]));
+          capsArray = [...new Set(capsArray.concat([...topCaps]))];
         }
         if (what.restrictions) {
           capsArray = capsArray.filter(c => topCaps.has(c));

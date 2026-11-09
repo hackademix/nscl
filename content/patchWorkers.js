@@ -65,11 +65,35 @@ globalThis.patchWorkers = (() => {
       : undefined
   );
 
+  const handlePatchUrl = (msg, port)  => {
+    let {url, isServiceOrShared} = msg;
+    url = `${url}`;
+    const workerCreatedMsg = {
+      __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
+    };
+    browser.runtime.sendMessage(workerCreatedMsg).then(async (r) => {
+      port.postMessage({ type: "patchedUrl", url });
+    }, e => {
+      console.error(e, "Could not patch", url); // DEV_ONLY
+      // terminate / unregister workers which could not be patched
+      port.postMessage({type: "cancelUrl", url});
+    });
+  }
+
+  const bcID = uuid();
+  const bc = new BroadcastChannel(bcID);
+  bc.addEventListener("message", ({ data: msg }) => {
+    switch (msg.type) {
+      case "patchUrl":
+        handlePatchUrl(msg, bc);
+        break;
+    }
+  });
 
   let initMain = port => {
     initMain.port ??= port;
     if (initMain.port && patches.size) {
-      initMain.port.postMessage({ type: "init" });
+      initMain.port.postMessage({ type: "init", bcID });
       initMain = () => { }; // one-time
     }
   };
@@ -83,6 +107,7 @@ globalThis.patchWorkers = (() => {
         case "propagate":
           // This is almost duplicated in patchWorker.main.js / modifyContext itself
           propagator = `
+            const bcID = "${bcID}";
             const modifyContext = ${msg.modifyContext};
             modifyContext(null, {});
           `;
@@ -90,20 +115,7 @@ globalThis.patchWorkers = (() => {
         case "getPatch":
           return joinPatches();
         case "patchUrl":
-        {
-          let {url, isServiceOrShared} = msg;
-          url = `${url}`;
-          const workerCreatedMsg = {
-            __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
-          };
-          browser.runtime.sendMessage(workerCreatedMsg).then(async (r) => {
-            port.postMessage({ type: "patchedUrl", url });
-          }, e => {
-            console.error(e, "Could not patch", url); // DEV_ONLY
-            // terminate / unregister workers which could not be patched
-            port.postMessage({type: "cancelUrl", url});
-          });
-        }
+          handlePatchUrl(msg, port);
       }
     }
   });

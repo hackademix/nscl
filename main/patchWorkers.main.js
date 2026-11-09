@@ -187,6 +187,7 @@
   })();
 
   let parentPatch;
+  let bcID;
 
   const modifyContext = (w, { port, xray }) => {
     if (!globalThis.Worker) {
@@ -275,8 +276,27 @@
     }
     const apply = Reflect.apply.bind(Reflect);
 
+    let bc;
+    if (!port && bcID && location.protocol != "data:") {
+      try {
+        bc = new BroadcastChannel(bcID);
+        bc.addEventListener("message", ({ data: msg }) => {
+          switch (msg.type) {
+            case "patchedUrl":
+              failSafe.ok(msg.url);
+            break;
+            case "cancelUrl":
+              failSafe.cancel(msg.url);
+            break;
+          }
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     const patchRemoteWorkerScript = (url, isServiceOrShared) =>
-      port?.postMessage({
+      (port || bc)?.postMessage({
         type: "patchUrl",
         url,
         isServiceOrShared,
@@ -341,6 +361,7 @@
           patch = `
             const parentPatch = ${patch};
             {
+              const bcID = "${bcID}";
               const modifyContext = ${modifyContext};
               modifyContext(null, {});
             }
@@ -501,6 +522,7 @@
     onMessage(msg, {port}) {
       switch (msg.type) {
         case "init":
+          bcID = msg.bcID;
           proxyWorkers();
           patchWindow(modifyContext, { port });
         break;

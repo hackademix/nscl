@@ -386,12 +386,12 @@
           `.replace(/^\s+/mg, '');
         let workerSrc = loadWorkerSrc();
         if (workerSrc !== null) {
-          if (args[1]?.type == "module") {
+          if (!isWorker || args[1]?.type == "module") {
             patch = `import "${
               url.protocol == "data:"
                 ? `data:application/javascript,${encodeURIComponent(patch)}`
                 : createObjectURL(new Blob([patch], { type: "application/javascript" }))
-            }";`;
+            }"`;
           }
           args[0] = url.protocol === "data:"
             ? `data:application/javascript,${encodeURIComponent(`${patch};${workerSrc}`)}`
@@ -400,14 +400,9 @@
         }
       }
       // remote patching
-      if (!w) {
-        // nested, handle in services/patchWorker.js
-        return createPatched(target, args);
-      }
       url = url.href;
       patchRemoteWorkerScript(url, isServiceOrShared);
-      const isWorklet = createPatched != constructWorker;
-      console.debug(`Patching remote ${isWorklet ? "worklet" : "worker"}`, url); // DEV_ONLY
+      console.debug(`Patching remote ${isWorker ? "worker" : "worklet"}`, url); // DEV_ONLY
       const worker = createPatched(target, args);
       return worker;
     };
@@ -431,6 +426,7 @@
               }
               const patching = failSafe.add(args[0]).then(
                 () => {
+                  args[0] += `#${Math.random()}`;
                   return addModule.apply(this, args);
                 },
                 e => {

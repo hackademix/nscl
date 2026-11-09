@@ -67,24 +67,23 @@
     if (frameId === 0) cleanup(tabId);
   });
 
-  const updatePatch = (patch, tabId, documentUrl, url) => {
+  const updatePatch = (patch, tabId, origin, url) => {
     let byOrigin = patchesByTab.get(tabId);
     if (!byOrigin) patchesByTab.set(tabId, byOrigin = new Map());
-    if (tabId == -1) {
-      documentUrl = new URL(documentUrl).origin;
-    }
+    origin = new URL(origin).origin;
     patch = wrapPatch(patch);
-    let patchInfo = byOrigin.get(documentUrl);
-    if (!patchInfo) byOrigin.set(documentUrl, patchInfo = {
+    let patchInfo = byOrigin.get(origin);
+    if (!patchInfo) byOrigin.set(origin, patchInfo = {
       patch,
-      urls: new Set(),
+      destinations: new Set(),
     });
     else {
       patchInfo.patch = patch;
     }
-    patchInfo.urls.add(url);
+    const destination = new URL(url).origin;
+    patchInfo.destinations.add(destination);
     // account for nested workers
-    byOrigin.set(url, patchInfo);
+    byOrigin.set(destination, patchInfo);
     return patchInfo;
   };
 
@@ -200,46 +199,40 @@
         return;
       }
 
-      const { tabId, frameId, url, originUrl, requestId } = request;
+      const { tabId, frameId, url, documentUrl, originUrl, requestId } = request;
       const byOrigin = patchesByTab.get(tabId);
-      let { documentUrl } = request;
-      if (tabId == -1) {
-        documentUrl = new URL(documentUrl).origin;
-        originUrl = new URL(originUrl).origin;
-      }
+      const documentOrigin = new URL(documentUrl).origin;
+      const initiatorOrigin = new URL(originUrl).origin;
 
-      let patchInfo = byOrigin?.get(documentUrl);
-      if (!patchInfo?.urls.has(url)) {
+      let patchInfo = byOrigin?.get(documentOrigin);
+      if (!patchInfo) {
         // account for nested workers
-        patchInfo = byOrigin?.get(originUrl);
+        patchInfo = byOrigin?.get(initiatorOrigin);
         if (!patchInfo) {
           if (tabId == -1) {
+            // we don't have any document to get the patch from
             return;
           }
           try {
             const patch = await browser.tabs.sendMessage(tabId,
-              { __getWorkerPatch__: { url } },
+              { __getWorkerPatch__: {} },
               { frameId }
             );
             if (!patch) {
               return;
             }
-          } catch(e) {
+          } catch (e) {
             return;
           }
-          patchInfo = updatePatch(patch, tabId, documentUrl, url);
+          patchInfo = updatePatch(patch, tabId, documentOrigin, url);
+        } else {
+          updatePatch(patchInfo.patch, tabId, documentOrigin, url);
         }
-        byOrigin.set(url, patchInfo);
-        patchInfo.urls.add(url);
       }
 
       console.debug(`Patching ${type}`, requestId, url, documentUrl); // DEV_ONLY REMOVEME
       const filter = browser.webRequest.filterResponseData(requestId);
-      const chunks = []
-      filter.onstart = () => {
-        console.debug("filter.onstart", requestId, patchInfo.patch);  // DEV_ONLY REMOVEME
-        filter.write(new TextEncoder().encode(patchInfo.patch));
-      };
+      const chunks = [];
       filter.ondata = ({data}) => {
         chunks.push(data);
       };
@@ -288,6 +281,10 @@
           resourceType: "Other",
           requestStage: "Response",
         },
+        {
+          resourceType: "Script",
+          requestStage: "Response",
+        }
       ]
     };
 

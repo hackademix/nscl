@@ -72,6 +72,7 @@ globalThis.patchWorkers = (() => {
       __patchWorkers__: { url, patch: joinPatches(), isServiceOrShared }
     };
     browser.runtime.sendMessage(workerCreatedMsg).then(async (r) => {
+      console.debug("Patched remote", url); // DEV_ONLY
       port.postMessage({ type: "patchedUrl", url });
     }, e => {
       console.error(e, "Could not patch", url); // DEV_ONLY

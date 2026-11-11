@@ -167,6 +167,7 @@
     };
     return {
       add(url) {
+         console.debug(`failSafe.add("${url}")`); // DEV_ONLY
         // always use an absolute URL, because it's what ok() and cancel() will get
         try {
           url = (new URL(url, document.baseURI)).href;
@@ -176,9 +177,11 @@
         return getResolver(url).promise;
       },
       ok(url) {
+        console.debug(`failSafe.ok("${url}")`, getResolver(url)); // DEV_ONLY
         getResolver(url).resolve(url);
       },
       cancel(url) {
+        console.debug(`failSafe.cancel("${url}")`); // DEV_ONLY
         const e = new Error(`Patching cancelled for url ${url}`);
         e.url = url;
         getResolver(url).reject(e);
@@ -519,7 +522,8 @@
   }
 
   Worlds.connect("patchWorkers.main", {
-    onMessage(msg, {port}) {
+    onMessage(msg, { port }) {
+      console.debug("patchWorkers.main message", msg); // DEV_ONLY
       switch (msg.type) {
         case "init":
           bcID = msg.bcID;

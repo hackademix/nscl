@@ -245,10 +245,8 @@
         }
 
         return {
-          createScriptURL(s, original) {
-            if (!(original instanceof TrustedScriptURL)) {
-              return s;
-            }
+          createScriptURL(s) {
+            s = `${s}`;
             authorized.add(s);
             try {
               console.debug("trustedTypeSupport.createScriptURL", s, policy, new Error().stack); // DEV_ONLY
@@ -264,7 +262,7 @@
       })()
       : {
         createScriptURL(s) {
-          return s;
+          return `${s}`;
         },
       };
 
@@ -273,8 +271,7 @@
     const createObjectURL = URL.createObjectURL.bind(URL);
     const fnConstruct = Reflect.construct.bind(Reflect);
     const constructWorker = (target, args) => {
-      args[0] = trustedTypeSupport.createScriptURL(args[0], args._originalURL);
-      delete args._originalURL;
+      args[0] = trustedTypeSupport.createScriptURL(args[0]);
       return fnConstruct(target, xray?.unwrap(args) || args);
     }
     const apply = Reflect.apply.bind(Reflect);
@@ -326,7 +323,6 @@
     const handlePatch = (createPatched, target, args, isServiceOrShared = false) => {
       const isWorker = createPatched == constructWorker;
       // string coercion may have side effects, let's clear it up immediately
-      args._originalURL = args[0];
       args[0] = `${args[0]}`;
       let url;
       try {
@@ -450,7 +446,7 @@
               }
               const patching = failSafe.add(args[0]).then(
                 () => {
-                  args[0] += `#${Math.random()}`;
+                  args[0] = trustedTypeSupport.createScriptURL(`${args[0]}#${Math.random()}`);
                   return addModule.apply(this, args);
                 },
                 e => {
@@ -489,7 +485,7 @@
           console.debug("Patching service worker", args); // DEV_ONLY
           try {
             // handle string coercion and its potential side effects right away
-            args[0] = trustedTypeSupport.createScriptURL(`${args[0]}`, args[0]);
+            args[0] = trustedTypeSupport.createScriptURL(args[0]);
           } catch (e) {
             return Promise.reject(e);
           }

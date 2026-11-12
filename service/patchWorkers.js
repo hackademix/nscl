@@ -113,8 +113,8 @@
           continue;
       }
 
-      const specifier = node.source.value;
-      const match = /^(data|blob):/i.exec(specifier);
+      const specifier = node.source?.value;
+      const match = specifier && /^(data|blob):/i.exec(specifier);
 
       if (!match) continue;
 

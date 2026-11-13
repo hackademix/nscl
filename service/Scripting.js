@@ -46,7 +46,7 @@ globalThis.Scripting ||= (() => {
   }
 
   async function wrapResults(results, target) {
-    const {frameId, frameIds, allFrames} = target;
+    let {frameId, frameIds, allFrames} = target;
     if (allFrames) {
       frameIds = (await browser.webNavigation.getAllFrames()).map(f => f.id);
     } else if (frameIds && frameId !== undefined) {

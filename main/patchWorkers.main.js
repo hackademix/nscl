@@ -204,7 +204,6 @@
       ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
       Proxy, Promise,
       TrustedTypePolicyFactory,
-      TrustedScriptURL,
     } = globalThis;
 
     const trustedTypeSupport = TrustedTypePolicyFactory
@@ -322,8 +321,10 @@
 
     const handlePatch = (createPatched, target, args, isServiceOrShared = false) => {
       const isWorker = createPatched == constructWorker;
-      // string coercion may have side effects, let's clear it up immediately
+      // copy arguments to avoid side effects
+      args = [... args];
       args[0] = `${args[0]}`;
+      args[1] = {... xray?.unwrap(args[1]) || args[1]};
       let url;
       try {
         url = new URL(args[0], baseURI);

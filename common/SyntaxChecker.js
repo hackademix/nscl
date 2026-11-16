@@ -40,12 +40,14 @@ class SyntaxChecker {
                   sourceType: "script"
                 });
                 this.lastFunction = func;
-                return true;
               } catch (e) {
                 this.lastError = e;
-                this.lastFunction = null;
+                if (e instanceof SyntaxError) {
+                  this.lastFunction = null;
+                  return false;
+                }
               }
-              return false;
+              return true;
             },
             unquoteAsync: function (s, q) {
               if (s.length > 2 && (!q || s.startsWith(q) && s.endsWith(q))) {

@@ -204,6 +204,7 @@
       ServiceWorkerContainer, URL, XMLHttpRequest, Blob,
       Proxy, Promise,
       TrustedTypePolicyFactory,
+      String,
     } = globalThis;
 
     const trustedTypeSupport = TrustedTypePolicyFactory
@@ -321,10 +322,20 @@
 
     const handlePatch = (createPatched, target, args, isServiceOrShared = false) => {
       const isWorker = createPatched == constructWorker;
-      // copy arguments to avoid side effects
+      // copy and coerce arguments to avoid side effects
       args = [... args];
-      args[0] = `${args[0]}`;
-      args[1] = {... xray?.unwrap(args[1]) || args[1]};
+      args[0] = String(args[0]);
+      if (typeof args[1] == "string") {
+        // SharedWorker name
+        args[1] = String(args[1]);
+      } else {
+        args[1] = { ...xray?.unwrap(args[1]) || args[1] };
+        for (const p of ["type", "updateViaCache"]) {
+          if (p in args[1]) {
+            args[1][p] = String(args[1][p]);
+          }
+        }
+      }
       let url;
       try {
         url = new URL(args[0], baseURI);

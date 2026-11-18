@@ -1,3 +1,4 @@
+
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
@@ -12,7 +13,8 @@
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+ * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details.
  *
  * You should have received a copy of the GNU General Public License along with
  * this program. If not, see <https://www.gnu.org/licenses/>.
@@ -108,6 +110,8 @@ globalThis.patchWorkers = (() => {
         case "propagate":
           // This is almost duplicated in patchWorker.main.js / modifyContext itself
           propagator = `
+            const createFailSafe = ${msg.createFailSafe};
+            const failSafe = createFailSafe();
             const bcID = "${bcID}";
             const modifyContext = ${msg.modifyContext};
             modifyContext(null, {});

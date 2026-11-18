@@ -82,6 +82,7 @@ ns.on("capabilities", event => {
           notifyWebGL(target);
           break;
         case "panic":
+          console.error("Too many consecutive blocked webgl contexts, trying to break the loop.");
           panicAbort();
           break;
       }
@@ -109,20 +110,28 @@ ns.on("capabilities", event => {
       }
       console.debug("Installing WebGLHook", globalThis, globalThis.location?.href); // DEV_ONLY
       const getContext = OffscreenCanvas.prototype.getContext;
+
+      // Capture intrinsics used by the handler before page code can tamper with them.
+      const { apply } = Reflect;
+      const regexpTest = RegExp.prototype.test;
+      const webglPattern = /webgl/i;
+      const { BroadcastChannel } = globalThis;
+      const { postMessage, close } = BroadcastChannel.prototype;
+
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}`, thisArg, globalThis); // DEV_ONLY
-          if (/webgl/i.test(argumentsList[0])) {
+          if (apply(regexpTest, webglPattern, [argumentsList[0]])) {
             try {
               const bc = new BroadcastChannel(channelID);
-              bc.postMessage({});
-              bc.close();
+              apply(postMessage, bc, [{}]);
+              apply(close, bc, []);
             } catch (e) {
-              console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
+              // Cannot use BroadcastChannel, but we're fine.
             }
             return null;
           }
-          return getContext.call(thisArg, ...argumentsList);
+          return apply(getContext, thisArg, argumentsList);
         }
       };
       OffscreenCanvas.prototype.getContext = new Proxy(getContext, handler);

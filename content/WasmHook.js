@@ -74,6 +74,7 @@ ns.on("capabilities", event => {
     } catch (e) {
       console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
     }
+
     const workersPatch = () => {
       console.debug("Installing WasmHook", globalThis, globalThis.location?.href); // DEV_ONLY
 
@@ -85,23 +86,52 @@ ns.on("capabilities", event => {
         return;
       }
 
+      // Capture intrinsics and methods used by the asynchronous handlers.
+      const { apply } = Reflect;
+      const { test: regexpTest } = RegExp.prototype;
+      const wasmPattern = /\bWebAssembly\b/;
+      const { getOwnPropertyDescriptor } = Object;
+      const errorMessageGetter =
+        getOwnPropertyDescriptor(ErrorEvent.prototype, "message").get;
+      const rejectionReasonGetter =
+        getOwnPropertyDescriptor(PromiseRejectionEvent.prototype, "reason").get;
+      const { BroadcastChannel } = globalThis;
+      const { postMessage, close } = BroadcastChannel.prototype;
+      const { error, log } = console;
+
       for (const event of ["error", "unhandledrejection", "rejectionhandled"]) {
         addEventListener(event, e => {
+          apply(error, console, [
+            e, "Error handler", e.reason, e.message, e.reason?.message, e.isTrusted
+          ]);
 
-          console.error(e, "Error handler", e.reason, e.message, e.reason?.message, e.isTrusted);
-          if (e.isTrusted && /\bWebAssembly\b/.test(`${e.message} ${e.reason?.message}`)) {
-            try {
-              const bc = new BroadcastChannel(channelID);
-              bc.postMessage({});
-              bc.close();
-              console.log("Used BroadcastChannel", channelID);
-            } catch (e) {
-              console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
+          if (!e.isTrusted) return;
+
+          let message;
+          try {
+            if (event === "error") {
+              message = apply(errorMessageGetter, e, []);
+            } else {
+              const reason = apply(rejectionReasonGetter, e, []);
+              message = reason?.message;
             }
+
+            if (!apply(regexpTest, wasmPattern, [`${message}`])) return;
+          } catch (_) {
+            return;
+          }
+
+          try {
+            const bc = new BroadcastChannel(channelID);
+            apply(postMessage, bc, [{}]);
+            apply(close, bc, []);
+          } catch (e) {
+            // Cannot use BroadcastChannel, but we're fine.
           }
         }, true);
       }
     };
+
     patchWorkers(`(${workersPatch})()`.replace(/\bchannelID\b/g, JSON.stringify(channelID)));
     debug(`WasmHook ready for workers spawned by ${document.URL}.`); // DEV_ONLY
   } catch(e) {

@@ -1,7 +1,8 @@
+
 /*
  * NoScript Commons Library
  * Reusable building blocks for cross-browser security/privacy WebExtensions.
- * Copyright (C) 2020-2024 Giorgio Maone <https://maone.net>
+ * Copyright (C) 2020-2026 Giorgio Maone <https://maone.net>
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  *
@@ -27,8 +28,9 @@
 
   function modifyWindow(scope, {port, xray}) {
     console.debug("WebGLHook patching", scope); // DEV_ONLY
-    const dispatchEvent = EventTarget.prototype.dispatchEvent;
-    const { Event } = scope;
+
+    const unwrappedScope = xray.unwrap(scope);
+
     for (const canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
       if (!(canvas in scope)) continue;
 
@@ -37,7 +39,6 @@
       // but proxy the wrapped getContext method from unprivileged scope, see
       // https://forums.informaction.com/viewtopic.php?p=104382
 
-      const unwrappedScope = xray.unwrap(scope);
       const CanvasClass = unwrappedScope[canvas];
       const getContext = xray.getSafeMethod(scope[canvas].prototype, "getContext");
 
@@ -45,26 +46,50 @@
       let consecutive = 0;
       let lastTime = 0;
       let panic = false;
+
+      // Capture the intrinsics and methods used by the handler, which may
+      // execute after page code has had an opportunity to tamper with them.
+      const apply = Reflect.apply;
+      const hasInstance = Function.prototype[Symbol.hasInstance];
+      const regexpTest = RegExp.prototype.test;
+      const dateNow = Date.now;
+      const webglPattern = /webgl/i;
+      const portPostMessage = port.postMessage;
+      const documentRef = unwrappedScope.document;
+      const documentContains = documentRef?.contains;
+
       const handler = cloneInto({
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${canvas}, ${canvas?.parentElement}`); // DEV_ONLY
-          if (thisArg instanceof CanvasClass && /webgl/i.test(argumentsList[0])) {
+
+          if (
+            apply(hasInstance, CanvasClass, [thisArg]) &&
+            apply(regexpTest, webglPattern, [argumentsList[0]])
+          ) {
             if (panic) {
               return null;
             }
-            const target = canvas == "HTMLCanvasElement" && unwrappedScope.document.contains(thisArg) ? thisArg : scope;
-            const t = Date.now();
+
+            const target =
+              canvas === "HTMLCanvasElement" &&
+              apply(documentContains, documentRef, [thisArg])
+                ? thisArg
+                : scope;
+
+            const t = apply(dateNow, Date, []);
+
             if (t - lastTime < 5 && consecutive++ > MAX_CONSECUTIVE) {
-              console.error("Too many consecutive blocked webgl contexts, trying to break the loop.");
               panic = true;
-              port.postMessage("panic");
+              apply(portPostMessage, port, ["panic"]);
             } else {
-              port.postMessage("notify", target);
+              apply(portPostMessage, port, ["notify", target]);
               lastTime = t;
             }
+
             return null;
           }
-          return getContext.call(thisArg, ...argumentsList);
+
+          return apply(getContext, thisArg, argumentsList);
         }
       }, scope, {cloneFunctions: true});
 

@@ -45,7 +45,7 @@
 
     for (const event of ["error", "unhandledrejection", "rejectionhandled"]) {
       addEventListener(event, e => {
-        if (e.isTrusted) return;
+        if (!e.isTrusted) return;
 
         let message;
         if (event === "error") {

@@ -641,11 +641,10 @@
           }]));
 
         if (typeof patch == "function") {
-          const createFailSafeSource = apply(fnToString, createFailSafe, []);
           patch = `
-            const parentPatch = ${patch};
+            const parentPatch = ${apply(fnToString, patch, [])};
             {
-              const createFailSafe = ${createFailSafeSource};
+              const createFailSafe = ${apply(fnToString, createFailSafe, [])};
               const failSafe = createFailSafe();
               const bcID = "${bcID}";
               const modifyContext = ${modifyContext};

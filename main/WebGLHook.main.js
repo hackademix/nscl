@@ -62,6 +62,8 @@
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${canvas}, ${canvas?.parentElement}`); // DEV_ONLY
 
+          // coerce early and once
+          argumentsList[0] = `${argumentsList[0]}`;
           if (
             apply(hasInstance, CanvasClass, [thisArg]) &&
             apply(regexpTest, webglPattern, [argumentsList[0]])

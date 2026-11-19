@@ -121,6 +121,8 @@ ns.on("capabilities", event => {
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}`, thisArg, globalThis); // DEV_ONLY
+          // coerce early and once
+          argumentsList[0] = `${argumentsList[0]}`;
           if (apply(regexpTest, webglPattern, [argumentsList[0]])) {
             try {
               const bc = new BroadcastChannel(channelID);

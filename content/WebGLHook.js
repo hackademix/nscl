@@ -105,11 +105,12 @@ ns.on("capabilities", event => {
       console.error(e, `Cannot use BroadCastChannel ${channelID} - but we're fine.`);
     }
     const workersPatch = () => {
-      if (!globalThis.OffscreenCanvas) {
+      const { OffscreenCanvas: CanvasClass } = globalThis;
+      if (!CanvasClass) {
         return;
       }
       console.debug("Installing WebGLHook", globalThis, globalThis.location?.href); // DEV_ONLY
-      const getContext = OffscreenCanvas.prototype.getContext;
+      const getContext = CanvasClass.prototype.getContext;
 
       // Capture intrinsics used by the handler before page code can tamper with them.
       const { apply } = Reflect;
@@ -118,12 +119,28 @@ ns.on("capabilities", event => {
       const { BroadcastChannel } = globalThis;
       const { postMessage, close } = BroadcastChannel.prototype;
 
+      // Brand check canvases by calling their native width getter
+      // to avoid prototype tampering pitfalls
+      const canvasWidthGetter =
+        Object.getOwnPropertyDescriptor(CanvasClass.prototype, "width").get;
+      const isCanvas = canvas => {
+        try {
+          apply(canvasWidthGetter, canvas, []);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+
       const handler = {
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}`, thisArg, globalThis); // DEV_ONLY
-          // coerce early and once
-          argumentsList[0] = `${argumentsList[0]}`;
-          if (apply(regexpTest, webglPattern, [argumentsList[0]])) {
+          if (isCanvas(thisArg) &&
+            // coerce once if needed
+            argumentsList.length &&
+            (argumentsList[0] = `${argumentsList[0]}`) &&
+            apply(regexpTest, webglPattern, [argumentsList[0]])
+          ) {
             try {
               const bc = new BroadcastChannel(channelID);
               apply(postMessage, bc, [{}]);
@@ -136,7 +153,7 @@ ns.on("capabilities", event => {
           return apply(getContext, thisArg, argumentsList);
         }
       };
-      OffscreenCanvas.prototype.getContext = new Proxy(getContext, handler);
+      CanvasClass.prototype.getContext = new Proxy(getContext, handler);
     };
     patchWorkers(`(${workersPatch})()`.replace(/\bchannelID\b/g, JSON.stringify(channelID)));
     debug(`WebGLHook ready for workers spawned by ${document.URL}.`); // DEV_ONLY

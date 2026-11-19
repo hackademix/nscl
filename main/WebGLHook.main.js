@@ -50,7 +50,6 @@
       // Capture the intrinsics and methods used by the handler, which may
       // execute after page code has had an opportunity to tamper with them.
       const apply = Reflect.apply;
-      const hasInstance = Function.prototype[Symbol.hasInstance];
       const regexpTest = RegExp.prototype.test;
       const dateNow = Date.now;
       const webglPattern = /webgl/i;
@@ -58,14 +57,26 @@
       const documentRef = unwrappedScope.document;
       const documentContains = documentRef?.contains;
 
+      // Brand check canvases by calling their native width getter
+      // to avoid prototype tampering pitfalls
+      const canvasWidthGetter =
+        Object.getOwnPropertyDescriptor(CanvasClass.prototype, "width").get;
+      const isCanvas = canvas => {
+        try {
+          apply(canvasWidthGetter, canvas, []);
+          return true;
+        } catch (e) {
+          return false;
+        }
+      };
+
       const handler = cloneInto({
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}, ${thisArg}, ${canvas}, ${canvas?.parentElement}`); // DEV_ONLY
-
-          // coerce early and once
-          argumentsList[0] = `${argumentsList[0]}`;
-          if (
-            apply(hasInstance, CanvasClass, [thisArg]) &&
+          if (isCanvas(thisArg) &&
+            // coerce once if needed
+            argumentsList.length &&
+            (argumentsList[0] = `${argumentsList[0]}`) &&
             apply(regexpTest, webglPattern, [argumentsList[0]])
           ) {
             if (panic) {

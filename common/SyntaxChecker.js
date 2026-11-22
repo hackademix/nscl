@@ -30,19 +30,22 @@ class SyntaxChecker {
           eval("''");
           this[asyncName] = this[methodName];
         } catch (e) {
-          await include("/nscl/lib/acorn.js");
+          const acornPath = "/nscl/lib/acorn.js";
+          const acornURL = new URL(acornPath, location.href);
+          console.debug("SyntaxChecker using acorn at ${acornURL}");
+          await include(acornPath);
           const acornImpl = {
             checkAsync: function (script) {
               const func = `() => {${script}}`;
               try {
                 acorn.parse(func, {
-                  ecmaVersion: 2022,
+                  ecmaVersion: "latest",
                   sourceType: "script"
                 });
                 this.lastFunction = func;
               } catch (e) {
                 this.lastError = e;
-                if (e instanceof SyntaxError) {
+                if (e instanceof SyntaxError && !e.stack?.includes(`at Parser.catchStackOverflow (${acornURL}`)) {
                   this.lastFunction = null;
                   return false;
                 }
@@ -52,7 +55,7 @@ class SyntaxChecker {
             unquoteAsync: function (s, q) {
               if (s.length > 2 && (!q || s.startsWith(q) && s.endsWith(q))) {
                 try {
-                  const ast = acorn.parseExpressionAt(s, 0, { ecmaVersion: 2022 });
+                  const ast = acorn.parseExpressionAt(s, 0, { ecmaVersion: "latest" });
                   switch (ast.type) {
                     case 'Literal':
                       return ast.value;

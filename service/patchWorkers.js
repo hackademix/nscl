@@ -87,6 +87,25 @@
     return patchInfo;
   };
 
+  const parseRequestHeaders = headers => {
+    // force lowercase names both in WebExtensions and CDP format
+    headers = Object.fromEntries(
+      (Array.isArray(headers)
+        ? headers.map(o => [o.name, o.value])
+        : Object.entries(headers)
+      ).map(([name, value]) => [name.toLowerCase(), value])
+    );
+    const type = headers["sec-fetch-dest"];
+    if (!(type && /work(er|let)/.test(type))) {
+      return;
+    }
+    const mode = headers["sec-fetch-mode"];
+    return {
+      type,
+      isModule: mode == "cors" || type.includes("worklet"),
+    };
+  };
+
   const findStaticImportScheme = async (source) => {
     await include("/nscl/lib/acorn.js");
 
@@ -98,10 +117,9 @@
         sourceType: "module"
       });
     } catch (e) {
-      // Don't guess if the source cannot be parsed.
-      return scheme;
+      // Default to blob if the source cannot be parsed
+      return "blob";
     }
-
 
     for (const node of ast.body) {
       switch (node.type) {
@@ -114,12 +132,15 @@
       }
 
       const specifier = node.source?.value;
-      const match = specifier && /^(data|blob):/i.exec(specifier);
-
-      if (!match) continue;
-
-      scheme = match[1].toLowerCase();
-
+      if (!specifier) continue;
+      try {
+        const s = new URL(specifier).protocol.slice(0, -1);
+        if (s == "blob" || s == "data") {
+          scheme = s;
+        }
+      } catch (e) {
+        continue;
+      }
       if (scheme == "data") {
         break;
       }
@@ -128,8 +149,8 @@
     return scheme;
   }
 
-  const mergePatch = async (patch, body, { tabId, origin }) => {
-    if (/\b(?:im|ex)port\b/.test(body)) {
+  const mergePatch = async (patch, body, { tabId, origin, isModule }) => {
+    if (isModule && /\b(?:im|ex)port\b/.test(body)) {
       const scheme = globalThis.PATCHWORKERS_DEBUG_SCHEME || await findStaticImportScheme(body);
       switch (scheme) {
         case "blob":
@@ -184,21 +205,11 @@
     browser.webRequest.onBeforeSendHeaders.addListener(async request => {
       const { requestHeaders } = request;
       console.debug("patchesByTab", patchesByTab, request); // DEV_ONLY REMOVEME
-
-      let type;
-      for (const { name, value } of requestHeaders) {
-        if (name == "Sec-Fetch-Dest") {
-          if (!/work(er|let)/.test(value)) {
-            return;
-          }
-          type = value;
-          break;
-        }
-      }
-      if (!type) {
+      const workerInfo = parseRequestHeaders(request.requestHeaders);
+      if (!workerInfo) {
         return;
       }
-
+      const { type, isModule } = workerInfo;
       const { tabId, frameId, url, documentUrl, originUrl, requestId } = request;
       const byOrigin = patchesByTab.get(tabId);
       const documentOrigin = new URL(documentUrl).origin;
@@ -233,30 +244,51 @@
       console.debug(`Patching ${type}`, requestId, url, documentUrl); // DEV_ONLY REMOVEME
       const filter = browser.webRequest.filterResponseData(requestId);
       const chunks = [];
-      filter.ondata = ({data}) => {
-        chunks.push(data);
-      };
-      filter.onstop = async () => {
-        try {
-          const size = chunks.reduce((n, chunk) => n + chunk.byteLength, 0);
-          const sourceBytes = new Uint8Array(size);
-          let offset = 0;
+      Object.assign(filter,
+        isModule ? // we need to buffer and check static imports
+        {
+          ondata({ data }) {
+            chunks.push(data);
+          },
+          async onstop() {
+            try {
+              const size = chunks.reduce((n, chunk) => n + chunk.byteLength, 0);
+              const sourceBytes = new Uint8Array(size);
+              let offset = 0;
 
-          for (const chunk of chunks) {
-            sourceBytes.set(new Uint8Array(chunk), offset);
-            offset += chunk.byteLength;
+              for (const chunk of chunks) {
+                sourceBytes.set(new Uint8Array(chunk), offset);
+                offset += chunk.byteLength;
+              }
+
+              const origin = new URL(url).origin;
+              const body = await mergePatch(patchInfo.patch,
+                new TextDecoder().decode(sourceBytes),
+                { tabId, origin, isModule, }
+              );
+              filter.write(new TextEncoder().encode(body));
+            } catch (e) {
+              console.error("Cannot patch worker response, failing close", e);
+              filter.disconnect();
+            } finally {
+              filter.close();
+            }
           }
-
-          const origin = new URL(url).origin;
-          const body = await mergePatch(patchInfo.patch, new TextDecoder().decode(sourceBytes), { tabId, origin });
-          filter.write(new TextEncoder().encode(body));
-        } catch (e) {
-          console.error("Cannot patch worker response", e);
-          filter.disconnect();
-        } finally {
-          filter.close();
         }
-      };
+        : // classic worker, don't buffer - we just need to prepend the self-contained patch code
+        {
+          onstart() {
+            console.debug("filter.onstart", requestId, patchInfo.patch);  // DEV_ONLY REMOVEME
+            filter.write(new TextEncoder().encode(patchInfo.patch));
+          },
+          ondata(e) {
+            filter.write(e.data);
+          },
+          onstop(e) {
+            filter.close();
+          }
+        }
+      );
     }, {
       urls: ["<all_urls>"],
       types: ["script"],
@@ -276,16 +308,10 @@
     const dbg = chrome.debugger;
 
     const fetchParams = {
-      patterns: [
-        {
-          resourceType: "Other",
-          requestStage: "Response",
-        },
-        {
-          resourceType: "Script",
-          requestStage: "Response",
-        }
-      ]
+      patterns:
+        ["Other", "Script"].flatMap(resourceType =>
+          ["Request", "Response"].map(requestStage => ({ resourceType, requestStage }))
+        )
     };
 
 
@@ -326,8 +352,21 @@
             break;
           }
           return;
+        case "Network.requestWillBeSentExtraInfo":
+          const initiatorUrl = dbgInfo.requests.get(params.requestId);
+          if (!initiatorUrl) {
+            break;
+          }
+          const workerInfo = parseRequestHeaders(params.headers);
+          if (!workerInfo) {
+            dbgInfo.requests.delete(params.requestId);
+          } else {
+            workerInfo.initiatorUrl = initiatorUrl;
+            dbgInfo.requests.set(params.requestId, workerInfo);
+          }
+          break;
         case "Fetch.requestPaused":
-          await dbgInfo.handleRequest(source, params);
+          dbgInfo.handleRequest(source, params);
           break;
         case "Network.loadingFinished":
         case "Network.loadingFailed":
@@ -382,10 +421,11 @@
             async handleRequest(source, params) {
               const { requestId, responseHeaders } = params;
               const contentTypeHeader = responseHeaders?.find(h => h.name.toLowerCase() === "content-type");
-              const isJS = /\bjavascript\b/.test(contentTypeHeader?.value);
-              if (isJS) {
+              const isJS = /\bjavascript\b/i.test(contentTypeHeader?.value);
+              if (isJS && this.requests.has(params.networkId)) {
                 try {
-                  const initiatorUrl = this.requests.get(params.networkId);
+                  const { type, isModule, initiatorUrl } = this.requests.get(params.networkId);
+                  if (!type) throw new Error(`Cannot guess worklet type for ${params.request.url}`);
                   const codeChunks = [];
                   if (initiatorUrl) {
                     const { origin } = new URL(initiatorUrl);
@@ -404,7 +444,7 @@
                   if (code) {
                     const response = await dbg.sendCommand(source, "Fetch.getResponseBody", { requestId });
                     let body = response.base64Encoded ? atob(response.body) : response.body;
-                    body = await mergePatch(code, body, { tabId: source.tabId, origin });
+                    body = await mergePatch(code, body, { tabId: source.tabId, origin, isModule });
                     body = btoa(unescape(encodeURIComponent(body)));
                     await dbg.sendCommand(source, "Fetch.fulfillRequest", {
                       requestId,
@@ -442,16 +482,27 @@
               } catch (e) {
                 console.error(e);
               }
+              console.debug("Debugger detached from tab", target.tabId); // DEV_ONLY
               debugging.delete(target.tabId);
             }
           }
         })();
         debugging.set(tabId, startingDebugger);
-        dbgInfo = await startingDebugger;
-        if (frameId > 0) {
-          await new Promise(resolve => {
-            dbgInfo.notifyFrameAttached = resolve;
-          });
+        try {
+          dbgInfo = await startingDebugger;
+        } catch (e) {
+          console.error(e);
+          throw e;
+        }
+        try {
+          if (frameId > 0) {
+            await new Promise(resolve => {
+              dbgInfo.notifyFrameAttached = resolve;
+              setTimeout(resolve, 200);
+            });
+          }
+        } catch (e) {
+          console.error(e);
         }
       }
       dbgInfo.patch(new URL(url).origin, patch);

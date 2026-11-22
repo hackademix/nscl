@@ -114,7 +114,8 @@ ns.on("capabilities", event => {
 
       // Capture intrinsics used by the handler before page code can tamper with them.
       const { apply } = Reflect;
-      const regexpTest = RegExp.prototype.test;
+
+      const regexpExec = RegExp.prototype.exec;
       const webglPattern = /webgl/i;
       const { BroadcastChannel } = globalThis;
       const { postMessage, close } = BroadcastChannel.prototype;
@@ -132,14 +133,17 @@ ns.on("capabilities", event => {
         }
       };
 
+
       const handler = {
+        // prevent inherited traps
+        __proto__: null,
         apply: function(targetObj, thisArg, argumentsList) {
           console.debug(`WebGLHook called from ${new Error().stack}`, thisArg, globalThis); // DEV_ONLY
           if (isCanvas(thisArg) &&
             // coerce once if needed
             argumentsList.length &&
             (argumentsList[0] = `${argumentsList[0]}`) &&
-            apply(regexpTest, webglPattern, [argumentsList[0]])
+            apply(regexpExec, webglPattern, [argumentsList[0]]) !== null
           ) {
             try {
               const bc = new BroadcastChannel(channelID);

@@ -29,6 +29,9 @@
   function modifyWindow(scope, {port, xray}) {
     console.debug("WebGLHook patching", scope); // DEV_ONLY
 
+    const { apply } = Reflect;
+    const { setPrototypeOf } = Object;
+
     const unwrappedScope = xray.unwrap(scope);
 
     for (const canvas of ["HTMLCanvasElement", "OffscreenCanvas"]) {
@@ -49,8 +52,8 @@
 
       // Capture the intrinsics and methods used by the handler, which may
       // execute after page code has had an opportunity to tamper with them.
-      const apply = Reflect.apply;
-      const regexpTest = RegExp.prototype.test;
+
+      const regexpExec = RegExp.prototype.exec;
       const dateNow = Date.now;
       const webglPattern = /webgl/i;
       const portPostMessage = port.postMessage;
@@ -77,7 +80,7 @@
             // coerce once if needed
             argumentsList.length &&
             (argumentsList[0] = `${argumentsList[0]}`) &&
-            apply(regexpTest, webglPattern, [argumentsList[0]])
+            apply(regexpExec, webglPattern, [argumentsList[0]]) !== null
           ) {
             if (panic) {
               return null;
@@ -105,6 +108,8 @@
           return apply(getContext, thisArg, argumentsList);
         }
       }, scope, {cloneFunctions: true});
+      // The cloned handler is a page object: prevent traps inherited from the page's Object.prototype.
+      setPrototypeOf(xray.unwrap(handler), null);
 
       const proxy = new scope.Proxy(getContext, handler);
       scope[canvas].prototype.getContext = proxy;

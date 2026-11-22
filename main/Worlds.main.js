@@ -21,7 +21,15 @@
 "use strict";
 
 if (globalThis.Worlds?.main) {
-  const {Function, Object, Proxy, Promise, Reflect, WeakMap} = globalThis;
+  const { Function, Object, Proxy, Promise, Reflect, WeakMap } = globalThis;
+  const { apply } = Reflect;
+  const { setPrototypeOf } = Object;
+  const {
+     has: weakMapHas,
+     get: weakMapGet,
+     set: weakMapSet,
+   } = WeakMap.prototype;
+
   const {
     console,
     exportFunction,
@@ -63,11 +71,12 @@ if (globalThis.Worlds?.main) {
           }
         }
 
-        strVal = strVal || toString.call(original);
+        strVal = strVal || apply(toString, original, []);
 
         let proxy = new Proxy(original, {
+          __proto__: null,
           apply(target, thisArg, args) {
-            return func.apply(thisArg, args);
+            return apply(func, thisArg, args);
           }
         });
 
@@ -75,14 +84,20 @@ if (globalThis.Worlds?.main) {
           let map = new WeakMap();
           exportFunction._toStringMap = map;
           let toStringProxy = new Proxy(toString, {
+            __proto__: null,
             apply(target, thisArg, args) {
-              return map.has(thisArg) ? map.get(thisArg) : Reflect.apply(target, thisArg, args);
+              return apply(weakMapHas, map, [thisArg])
+                ? apply(weakMapGet, map, [thisArg])
+                : apply(target, thisArg, args);
             }
           });
-          map.set(toStringProxy, toString.apply(toString));
+          apply(weakMapSet, map, [
+            toStringProxy,
+            apply(toString, toString, [])
+          ]);
           Function.prototype.toString = toStringProxy;
         }
-        exportFunction._toStringMap.set(proxy, strVal);
+        apply(weakMapSet, exportFunction._toStringMap, [proxy, strVal]);
 
         if (propName) {
           if (!propDes) {
@@ -130,7 +145,11 @@ if (globalThis.Worlds?.main) {
           env.xray.proxify =
             (propName, handler, scope = window) => {
               const unwrapped = xray.unwrap(scope[propName]);
-              const proxied = new Proxy(unwrapped, xray.forPage(handler));
+              // The cloned handler is a page object: detach it from the page's Object.prototype,
+              // or page code can supply the traps it doesn't define and get the original target.
+              const pageHandler = xray.forPage(handler);
+              setPrototypeOf(xray.unwrap(pageHandler), null);
+              const proxied = new Proxy(unwrapped, pageHandler);
               xray.unwrap(scope)[propName] = proxied;
               if (typeof unwrapped == "function" && unwrapped.prototype?.constructor === unwrapped) {
                 unwrapped.prototype.constructor = proxied;
@@ -155,7 +174,7 @@ if (globalThis.Worlds?.main) {
       function modifyWindowOpenMethod(win) {
         const windowOpen = win.open;
         exportFunction(function(...args) {
-          const newWin = windowOpen.call(this, ...args);
+          const newWin = apply(windowOpen, this, args);
           if (newWin) modifyWindow(newWin);
           return newWin;
         }, win, {defineAs: "open"});
@@ -190,10 +209,11 @@ if (globalThis.Worlds?.main) {
         const observer = new MutationObserver(patchAll);
         observer.observe(win.document, { subtree: true, childList: true });
         const patchHandler = {
+          __proto__: null,
           apply(target, thisArg, args) {
             let ret;
             try {
-              ret = Reflect.apply(target, thisArg, args);
+              ret = apply(target, thisArg, args);
             } catch(e) {
               console.error("Error calling proxied sink method", target, thisArg, args, e);
             }
@@ -279,12 +299,12 @@ if (globalThis.Worlds?.main) {
         let origGetter = descriptor.get;
         let replacements = {
           contentWindow() {
-            let win = origGetter.call(this);
+            let win = apply(origGetter, this, []);
             if (win) modifyWindow(win);
             return win;
           },
           contentDocument() {
-            let document = origGetter.call(this);
+            let document = apply(origGetter, this, []);
             if (document?.defaultView) modifyWindow(document.defaultView);
             return document;
           }

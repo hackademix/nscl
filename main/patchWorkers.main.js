@@ -88,7 +88,8 @@
       // Capture intrinsics before page code gets a chance to tamper with them.
       const { Map, Reflect, RegExp, Array, Promise, Proxy, Object, Function, MessagePort } = globalThis;
       const { apply, construct, get, set } = Reflect;
-      const { test: regexpTest } = RegExp.prototype;
+      // Not RegExp.prototype.test(): it looks up "exec" on the regexp at call time.
+      const { exec: regexpExec } = RegExp.prototype;
       const inlineURLPattern = /^(?:data|blob):/;
       const { has: mapHas, get: mapGet, set: mapSet, forEach: mapForEach } = Map.prototype;
       const { push: arrayPush, forEach: arrayForEach } = Array.prototype;
@@ -123,8 +124,12 @@
         }
 
         return originalPrototype.constructor = new Proxy(original, {
+          __proto__: null,
           construct(target, args) {
-            if (apply(regexpTest, inlineURLPattern, [args[0]])) {
+            if (args.length &&
+              (args[0] = `${args[0]}`) &&
+              apply(regexpExec, inlineURLPattern, [args[0]]) !== null
+            ) {
               return apply(construct, Reflect, [original, args]);
             }
 
@@ -138,6 +143,7 @@
             const portListeners = new Map();
 
             const portProxy = isSharedWorker ? new Proxy({}, {
+              __proto__: null,
               get(t, prop) {
                 if (realPort) return apply(get, Reflect, [realPort, prop]);
 
@@ -223,6 +229,7 @@
             apply(promiseThen, failSafe.add(args[0]), [release]);
 
             return new Proxy({}, {
+              __proto__: null,
               get(t, prop) {
                 // Check reference for SharedWorker port access.
                 if (prop === "port" && isSharedWorker) return portProxy;
@@ -349,7 +356,7 @@
 
     const { apply, construct } = Reflect;
     const { then: promiseThen } = Promise.prototype;
-    const { test: regexpTest } = RegExp.prototype;
+    const { exec: regexpExec } = RegExp.prototype;
     const inlineURLPattern = /^(?:data|blob):/;
     const { stringify: jsonStringify } = JSON;
     const { getOwnPropertyDescriptor } = Object;
@@ -447,6 +454,7 @@
         const { createPolicy } = prototype;
 
         const handler = {
+          __proto__: null,
           apply(target, thisArg, args) {
             if (xray) {
               args = xray.unwrap(args);
@@ -567,12 +575,15 @@
 
     // patch Worker & SharedWorker
     const baseURI = document?.baseURI || location.href;
+    // Proxy handlers must not inherit from Object.prototype (prevent tampering)
     const workerHandler = {
+      __proto__: null,
       construct(target, args) {
         return handlePatch(constructWorker, target, args);
       }
     };
     const sharedWorkerHandler = {
+      __proto__: null,
       construct(target, args) {
         return handlePatch(constructWorker, target, args, /* isServiceOrShared */ true);
       }
@@ -615,7 +626,7 @@
         return createPatched(target, args);
       }
 
-      if (apply(regexpTest, inlineURLPattern, [getURLProtocol(url)])) {
+      if (apply(regexpExec, inlineURLPattern, [getURLProtocol(url)]) !== null) {
 
         // Inline patching
 
@@ -647,7 +658,7 @@
               const createFailSafe = ${apply(fnToString, createFailSafe, [])};
               const failSafe = createFailSafe();
               const bcID = "${bcID}";
-              const modifyContext = ${modifyContext};
+              const modifyContext = ${apply(fnToString, modifyContext, [])};
               modifyContext(null, {});
             }
             parentPatch();
@@ -664,6 +675,7 @@
             console.debug("Patching worker", globalThis, location?.href); // DEV_ONLY
             const handler = name => {
             return {
+                __proto__: null,
                 apply(target, thisArg, args) {
                   return location === thisArg ? url[name] : apply(target, thisArg, args);
                 }
@@ -733,7 +745,10 @@
           return handlePatch(
             (target, args) => {
               console.debug("Worklet creation", target, args, this); // DEV_ONLY
-              if (apply(regexpTest, inlineURLPattern, [args[0]])) {
+              if (args.length &&
+                (args[0] = `${args[0]}`) &&
+                apply(regexpExec, inlineURLPattern, [args[0]]) !== null
+              ) {
                 return apply(addModule, this, args);
               }
               const patching = apply(promiseThen, failSafe.add(args[0]), [

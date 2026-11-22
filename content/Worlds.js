@@ -33,6 +33,8 @@
 
   const { dispatchEvent, addEventListener, removeEventListener, CustomEvent } = self;
   const { Object, Error, Reflect } = globalThis;
+  const { apply } = Reflect;
+  const { setPrototypeOf } = Object;
 
   const xray = (() => {
     const xrayEnabled = globalThis.XPCNativeWrapper;
@@ -42,20 +44,23 @@
     const getSafeMethod = zombieDanger
     ? (obj, method, wrappedObj) => {
       let actualTarget = obj[method];
-      return XPCNativeWrapper.unwrap(new window.Proxy(actualTarget, cloneInto({
+      const handler = cloneInto({
         apply(targetFunc, thisArg, args) {
           try {
-            return actualTarget.apply(thisArg, args);
+            return apply(actualTarget, thisArg, args);
           } catch (e) {
             if (isZombieException(e)) {
               console.debug(`Zombie hit for "${method}", falling back to native wrapper...`);
-              return (actualTarget = (wrappedObj || XPCNativeWrapper(obj))[method]).apply(thisArg, args);
+              actualTarget = (wrappedObj || XPCNativeWrapper(obj))[method];
+              return apply(actualTarget, thisArg, args);
             }
             throw e;
           }
         },
-      }, window, {cloneFunctions: true, wrapReflectors: true}
-      )));
+      }, window, {cloneFunctions: true, wrapReflectors: true});
+      // The cloned handler is a page object: prevent traps inherited from the page's Object.prototype.
+      setPrototypeOf(XPCNativeWrapper.unwrap(handler), null);
+      return XPCNativeWrapper.unwrap(new window.Proxy(actualTarget, handler));
     }
     : (obj, method) => obj[method];
 
@@ -98,6 +103,7 @@
       };
 
       const handler = {
+        __proto__: null,
         get(target, key, receiver) {
           if (ended) {
             for (const doIt of replay) {
@@ -122,7 +128,7 @@
     const stackGetter = Object.getOwnPropertyDescriptor(Error.prototype, "stack")?.get
       || function() { return this.stack };
     return () => {
-      const stack = Reflect.apply(stackGetter, new Error(), []).split("\n");
+      const stack = apply(stackGetter, new Error(), []).split("\n");
       // Remove top "Error" (Chromium-only) and this very  call site
       stack.splice(0, stack[0].startsWith("Error") ? 2 : 1);
       return stack;

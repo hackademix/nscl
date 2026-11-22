@@ -49,7 +49,11 @@
 
         let message;
         if (event === "error") {
-          message = apply(errorMessageGetter, e, []);
+          try {
+            message = apply(errorMessageGetter, e, []);
+          } catch (_) {
+            return;
+          }
         } else {
           const reason = apply(rejectionReasonGetter, e, []);
           try {

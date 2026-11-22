@@ -87,24 +87,12 @@
     return patchInfo;
   };
 
-  const parseRequestHeaders = headers => {
-    // force lowercase names both in WebExtensions and CDP format
-    headers = Object.fromEntries(
+  const parseRequestHeaders = headers => Object.fromEntries(
       (Array.isArray(headers)
         ? headers.map(o => [o.name, o.value])
         : Object.entries(headers)
       ).map(([name, value]) => [name.toLowerCase(), value])
     );
-    const type = headers["sec-fetch-dest"];
-    if (!(type && /work(er|let)/.test(type))) {
-      return;
-    }
-    const mode = headers["sec-fetch-mode"];
-    return {
-      type,
-      isModule: mode == "cors" || type.includes("worklet"),
-    };
-  };
 
   const findStaticImportScheme = async (source) => {
     await include("/nscl/lib/acorn.js");
@@ -117,8 +105,22 @@
         sourceType: "module"
       });
     } catch (e) {
-      // Default to blob if the source cannot be parsed
-      return "blob";
+      console.error("Could not parse as module", e); // DEV_ONLY
+      try {
+        ast = acorn.parse(source, {
+          ecmaVersion: "latest",
+          sourceType: "script"
+        });
+      } catch (e) {
+        console.error("Could not parse as classic script", e); // DEV_ONLY
+        // Default to blob if the source cannot be parsed at all:
+        // it will produce a syntax error on import for "classic"
+        // and will work for "module" unless blob is disabled by CSP.
+        // either way, seems a good fail-close compromise.
+        return "blob";
+      }
+      // This seems a "classic" worker, let's return null and patch inline.
+      return null;
     }
 
     for (const node of ast.body) {
@@ -149,9 +151,11 @@
     return scheme;
   }
 
-  const mergePatch = async (patch, body, { tabId, origin, isModule }) => {
-    if (isModule && /\b(?:im|ex)port\b/.test(body)) {
-      const scheme = globalThis.PATCHWORKERS_DEBUG_SCHEME || await findStaticImportScheme(body);
+  const mergePatch = async (patch, body, { tabId, origin }) => {
+    // neutralize potential syntax errors from prepending our patch to hash-bangs
+    body = body.replace(/^#!/, "//");
+    if (/\b(?:im|ex)port\b[^\(]/.test(body)) {
+      let scheme = globalThis.PATCHWORKERS_DEBUG_SCHEME || await findStaticImportScheme(body);
       switch (scheme) {
         case "blob":
           try {
@@ -177,6 +181,7 @@
         break;
       }
     }
+    // concatenate the patch and the body
     return patch.concat(body);
   }
 
@@ -203,13 +208,12 @@
 
     // Filter the worker script sources from the network
     browser.webRequest.onBeforeSendHeaders.addListener(async request => {
-      const { requestHeaders } = request;
       console.debug("patchesByTab", patchesByTab, request); // DEV_ONLY REMOVEME
-      const workerInfo = parseRequestHeaders(request.requestHeaders);
-      if (!workerInfo) {
+      const { requestHeaders } = request;
+      const type = parseRequestHeaders(requestHeaders)["sec-fetch-dest"];
+      if (!/work(er|let)/.test(type)) {
         return;
       }
-      const { type, isModule } = workerInfo;
       const { tabId, frameId, url, documentUrl, originUrl, requestId } = request;
       const byOrigin = patchesByTab.get(tabId);
       const documentOrigin = new URL(documentUrl).origin;
@@ -245,7 +249,6 @@
       const filter = browser.webRequest.filterResponseData(requestId);
       const chunks = [];
       Object.assign(filter,
-        isModule ? // we need to buffer and check static imports
         {
           ondata({ data }) {
             chunks.push(data);
@@ -264,7 +267,7 @@
               const origin = new URL(url).origin;
               const body = await mergePatch(patchInfo.patch,
                 new TextDecoder().decode(sourceBytes),
-                { tabId, origin, isModule, }
+                { tabId, origin }
               );
               filter.write(new TextEncoder().encode(body));
             } catch (e) {
@@ -273,19 +276,6 @@
             } finally {
               filter.close();
             }
-          }
-        }
-        : // classic worker, don't buffer - we just need to prepend the self-contained patch code
-        {
-          onstart() {
-            console.debug("filter.onstart", requestId, patchInfo.patch);  // DEV_ONLY REMOVEME
-            filter.write(new TextEncoder().encode(patchInfo.patch));
-          },
-          ondata(e) {
-            filter.write(e.data);
-          },
-          onstop(e) {
-            filter.close();
           }
         }
       );
@@ -308,12 +298,17 @@
     const dbg = chrome.debugger;
 
     const fetchParams = {
-      patterns:
-        ["Other", "Script"].flatMap(resourceType =>
-          ["Request", "Response"].map(requestStage => ({ resourceType, requestStage }))
-        )
+      patterns: [
+        {
+          resourceType: "Other",
+          requestStage: "Response",
+        },
+        {
+          resourceType: "Script",
+          requestStage: "Response",
+        }
+      ],
     };
-
 
     debugging = new Map();
     debugging.dispose = async function(tabId) {
@@ -352,19 +347,6 @@
             break;
           }
           return;
-        case "Network.requestWillBeSentExtraInfo":
-          const initiatorUrl = dbgInfo.requests.get(params.requestId);
-          if (!initiatorUrl) {
-            break;
-          }
-          const workerInfo = parseRequestHeaders(params.headers);
-          if (!workerInfo) {
-            dbgInfo.requests.delete(params.requestId);
-          } else {
-            workerInfo.initiatorUrl = initiatorUrl;
-            dbgInfo.requests.set(params.requestId, workerInfo);
-          }
-          break;
         case "Fetch.requestPaused":
           dbgInfo.handleRequest(source, params);
           break;
@@ -424,8 +406,7 @@
               const isJS = /\bjavascript\b/i.test(contentTypeHeader?.value);
               if (isJS && this.requests.has(params.networkId)) {
                 try {
-                  const { type, isModule, initiatorUrl } = this.requests.get(params.networkId);
-                  if (!type) throw new Error(`Cannot guess worklet type for ${params.request.url}`);
+                  const initiatorUrl = this.requests.get(params.networkId);
                   const codeChunks = [];
                   if (initiatorUrl) {
                     const { origin } = new URL(initiatorUrl);
@@ -444,7 +425,7 @@
                   if (code) {
                     const response = await dbg.sendCommand(source, "Fetch.getResponseBody", { requestId });
                     let body = response.base64Encoded ? atob(response.body) : response.body;
-                    body = await mergePatch(code, body, { tabId: source.tabId, origin, isModule });
+                    body = await mergePatch(code, body, { tabId: source.tabId, origin, });
                     body = btoa(unescape(encodeURIComponent(body)));
                     await dbg.sendCommand(source, "Fetch.fulfillRequest", {
                       requestId,
@@ -493,16 +474,6 @@
         } catch (e) {
           console.error(e);
           throw e;
-        }
-        try {
-          if (frameId > 0) {
-            await new Promise(resolve => {
-              dbgInfo.notifyFrameAttached = resolve;
-              setTimeout(resolve, 200);
-            });
-          }
-        } catch (e) {
-          console.error(e);
         }
       }
       dbgInfo.patch(new URL(url).origin, patch);
